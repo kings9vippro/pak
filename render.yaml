@@ -7,7 +7,7 @@ services:
       pip install -r requirements.txt
       python -m playwright install chromium
     startCommand: |
-      python -m playwright install chromium || true
+      python -m playwright install chromium 2>/dev/null || true
       python main.py
     healthCheckPath: /
     envVars:
