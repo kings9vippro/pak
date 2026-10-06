@@ -1,7 +1,8 @@
 # ============================================================
-# BOT BY ANH KHÔI — ALB FORGE v7.1
-# Telegram: 8908394974:AAEoCVzAtD8xc_2N49rHP43HUIGrTEkYGX4
+# BOT BY ANH KHÔI — ALB FORGE v7.2
+# Telegram: 8845944331:AAEN9CM-mui0Ga_HFENi9I52EcxsWtgg8Sk
 # Admin: 6094686933
+# Chạy trên Render Free dưới dạng Web Service (có HTTP server giả)
 # ============================================================
 import os
 import re
@@ -13,10 +14,13 @@ import threading
 import asyncio
 import warnings
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 warnings.filterwarnings("ignore")
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+)
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes
@@ -48,10 +52,13 @@ from cookie_guide import (
 import redteam
 import cool_features
 
-# ============ CONFIG ============
+
+# ============================================================
+# CONFIG
+# ============================================================
 BOT_TOKEN = os.environ.get(
     "BOT_TOKEN",
-    "8908394974:AAEoCVzAtD8xc_2N49rHP43HUIGrTEkYGX4"
+    "8845944331:AAEN9CM-mui0Ga_HFENi9I52EcxsWtgg8Sk"
 )
 ADMIN_IDS = [
     int(x) for x in
@@ -62,7 +69,50 @@ DATA_DIR = os.environ.get("DATA_DIR", "/tmp/alb_data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-# ============ TASK MANAGER ============
+# ============================================================
+# FAKE HTTP SERVER — Giữ Render Free không kill worker
+# Render yêu cầu Web Service phải bind PORT và trả HTTP 200 OK
+# ============================================================
+class _HealthHandler(BaseHTTPRequestHandler):
+    """Handler trả 200 OK cho mọi request."""
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "5")
+        self.end_headers()
+        self.wfile.write(b"alive")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+
+    def do_POST(self):
+        self.send_response(200)
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, format, *args):
+        # Tắt log spam từ HTTP server
+        pass
+
+
+def _start_health_server():
+    """Chạy HTTP server trên port Render cấp."""
+    port = int(os.environ.get("PORT", 8080))
+    try:
+        server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+        print(f"[HEALTH] HTTP server listening on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        print(f"[HEALTH] Lỗi start server: {e}")
+
+
+# ============================================================
+# TASK MANAGER
+# ============================================================
 class Task:
     __slots__ = ("id", "type", "owner", "stop", "start", "thread", "meta")
 
@@ -111,7 +161,9 @@ def new_tid(p):
     return f"{p}_{int(time.time()*1000)}"
 
 
-# ============ MENU ============
+# ============================================================
+# MENU
+# ============================================================
 MAIN_KB = [
     [InlineKeyboardButton("📘 Facebook", callback_data="m_fb"),
      InlineKeyboardButton("📞 Zalo", callback_data="m_zalo")],
@@ -230,7 +282,9 @@ MENU_TEXT = {
 }
 
 
-# ============ DECORATOR ============
+# ============================================================
+# DECORATOR
+# ============================================================
 def admin_only(func):
     async def w(update, ctx):
         if update.effective_user.id not in ADMIN_IDS:
@@ -242,13 +296,15 @@ def admin_only(func):
     return w
 
 
-# ============ START ============
+# ============================================================
+# START / MENU
+# ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Không có quyền.")
         return
     await update.message.reply_text(
-        "🔥 *ALB FORGE v7.1*\n"
+        "🔥 *ALB FORGE v7.2*\n"
         "_Bot by Anh Khôi_\n"
         "_7-Layer Firewall — Anti-Ban Elite_\n\n"
         "Chọn chức năng:",
@@ -274,7 +330,9 @@ async def cb_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ FW ============
+# ============================================================
+# FIREWALL
+# ============================================================
 @admin_only
 async def cmd_fw_status(update, ctx):
     text = "*🛡 FIREWALL v7 — 7 LỚP*\n\n"
@@ -328,7 +386,9 @@ async def cmd_fw_risk(update, ctx):
         parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ RATE ============
+# ============================================================
+# RATE
+# ============================================================
 @admin_only
 async def cmd_rate(update, ctx):
     d = rate_all()
@@ -377,7 +437,9 @@ async def cmd_rate_clear(update, ctx):
         f"✅ Cleared `{key}`", parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ GUARD ============
+# ============================================================
+# COOKIE GUARD
+# ============================================================
 @admin_only
 async def cmd_guard_status(update, ctx):
     if not ctx.args:
@@ -422,7 +484,9 @@ async def cmd_guard_safe(update, ctx):
         parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ COOKIE GUIDE ============
+# ============================================================
+# COOKIE GUIDE
+# ============================================================
 @admin_only
 async def cmd_cookie_fb(u, c):
     await u.message.reply_text(COOKIE_FB)
@@ -463,7 +527,9 @@ async def cmd_cookie_sms(u, c):
     await u.message.reply_text(COOKIE_SMS)
 
 
-# ============ FACEBOOK ============
+# ============================================================
+# FACEBOOK
+# ============================================================
 @admin_only
 async def cmd_fb_check(update, ctx):
     if not ctx.args:
@@ -553,7 +619,9 @@ async def cmd_fb_spam(update, ctx):
         parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ FB EDIT ============
+# ============================================================
+# FB EDIT
+# ============================================================
 @admin_only
 async def cmd_fb_bio(u, c):
     t = u.message.text.replace("/fb_bio ", "", 1)
@@ -736,7 +804,9 @@ async def cmd_fb_auto_story(u, c):
     await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ ZALO ============
+# ============================================================
+# ZALO
+# ============================================================
 @admin_only
 async def cmd_zalo_qr(update, ctx):
     qr = ZaloQRLogin()
@@ -765,10 +835,10 @@ async def cmd_zalo_qr(update, ctx):
     payload = {"imei": imei, "cookies": cookies}
     with open(os.path.join(DATA_DIR, f"zalo_{update.effective_user.id}.json"), "w") as f:
         json.dump(payload, f, ensure_ascii=False)
+    # Gửi cookie KHÔNG dùng ``` để tránh lỗi markdown
+    cookie_str = json.dumps(cookies, indent=2)
     await update.message.reply_text(
-        f"✅ Đăng nhập Zalo!\n*IMEI:* `{imei}`\n"
-        f"*Cookie:*\n```json\n{json.dumps(cookies, indent=2)}\n```",
-        parse_mode=ParseMode.MARKDOWN,
+        f"✅ Đăng nhập Zalo!\n*IMEI:* `{imei}`\n\n*Cookie:*\n{cookie_str}",
     )
 
 
@@ -935,7 +1005,9 @@ async def cmd_zalo_auto_theme(u, c):
         await u.message.reply_text(f"❌ {e}")
 
 
-# ============ DISCORD / TELEGRAM / GMAIL / SMS / IG / WECHAT ============
+# ============================================================
+# DISCORD / TELEGRAM / GMAIL / SMS / IG / WECHAT
+# ============================================================
 @admin_only
 async def cmd_discord_spam(u, c):
     t = u.message.text.replace("/discord_spam ", "", 1)
@@ -1000,7 +1072,6 @@ async def cmd_tele_spam(u, c):
     await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ GMAIL — ĐÃ FIX SYNTAX ============
 @admin_only
 async def cmd_gmail_spam(u, c):
     t = u.message.text.replace("/gmail_spam ", "", 1)
@@ -1009,7 +1080,7 @@ async def cmd_gmail_spam(u, c):
         await u.message.reply_text(
             "Cú pháp: /gmail_spam <email>|<pass>|<to>|<msg1;msg2>|<delay>")
         return
-    # Import ở đầu hàm, KHÔNG trong closure để tránh lỗi syntax
+    # Import ở đầu hàm để tránh lỗi syntax
     import smtplib
     import ssl as _ssl
     from email.mime.text import MIMEText
@@ -1165,7 +1236,9 @@ async def cmd_wechat_spam(u, c):
     await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ COOKIE STORAGE ============
+# ============================================================
+# COOKIE STORAGE
+# ============================================================
 @admin_only
 async def cmd_save_fb(u, c):
     ck = u.message.text.replace("/save_fb ", "", 1).strip()
@@ -1256,7 +1329,9 @@ async def cmd_warm_ck(u, c):
         parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ COOL FEATURES ============
+# ============================================================
+# COOL FEATURES
+# ============================================================
 @admin_only
 async def cmd_nick(u, c):
     await u.message.reply_text(
@@ -1280,9 +1355,9 @@ async def cmd_uid_extract(u, c):
 @admin_only
 async def cmd_ip_info(u, c):
     info = cool_features.ip_info()
+    # Không dùng ``` để tránh lỗi markdown
     await u.message.reply_text(
-        "```json\n" + json.dumps(info, indent=2, ensure_ascii=False) + "\n```",
-        parse_mode=ParseMode.MARKDOWN)
+        json.dumps(info, indent=2, ensure_ascii=False))
 
 
 @admin_only
@@ -1335,7 +1410,9 @@ async def cmd_backup_all(u, c):
         parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ TASKS ============
+# ============================================================
+# TASKS
+# ============================================================
 @admin_only
 async def cmd_tasks(u, c):
     tasks = TASKS.by_owner(u.effective_user.id)
@@ -1372,7 +1449,9 @@ async def cmd_stop_all(u, c):
         f"✅ Đã dừng `{len(tasks)}` task.", parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ RED TEAM ============
+# ============================================================
+# RED TEAM
+# ============================================================
 @admin_only
 async def cmd_rt_worm(u, c):
     if not c.args:
@@ -1381,9 +1460,7 @@ async def cmd_rt_worm(u, c):
     hosts = [x.strip() for x in c.args[0].split(",")]
     w = redteam.WormSim(hosts)
     out = w.scan() + w.propagate("payload.bin")
-    await u.message.reply_text(
-        "🧪 *Worm Sim:*\n```\n" + "\n".join(out) + "\n```",
-        parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text("🧪 *Worm Sim:*\n" + "\n".join(out))
 
 
 @admin_only
@@ -1448,7 +1525,9 @@ async def cmd_rt_exploit(u, c):
     await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ POST INIT ============
+# ============================================================
+# POST INIT
+# ============================================================
 async def post_init(app):
     print("[POST_INIT] Bắt đầu setup...")
     try:
@@ -1545,14 +1624,21 @@ async def post_init(app):
     print("[BOT] Ready. Bot by Anh Khôi.")
 
 
-# ============ MAIN ============
+# ============================================================
+# MAIN
+# ============================================================
 def main():
+    # ---------- Fix event loop ----------
     try:
         asyncio.get_event_loop()
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
-    # Xóa webhook cũ để tránh Conflict
+    # ---------- Start HTTP server để Render không kill ----------
+    threading.Thread(target=_start_health_server, daemon=True).start()
+    time.sleep(0.5)
+
+    # ---------- Xóa webhook lần 1 ----------
     try:
         import requests as _r
         resp = _r.get(
@@ -1564,9 +1650,41 @@ def main():
     except Exception as e:
         print(f"[MAIN] Không xóa được webhook: {e}")
 
+    # ---------- Verify token ----------
+    try:
+        import requests as _r
+        resp = _r.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getMe",
+            timeout=10
+        )
+        data = resp.json()
+        if data.get("ok"):
+            bot_info = data["result"]
+            print(f"[MAIN] ✅ Bot OK: @{bot_info.get('username')} (ID: {bot_info.get('id')})")
+        else:
+            print(f"[MAIN] ❌ Token lỗi: {data}")
+            return
+    except Exception as e:
+        print(f"[MAIN] ❌ Không verify token: {e}")
+        return
+
+    # ---------- Xóa webhook lần 2 ----------
+    try:
+        import requests as _r
+        time.sleep(2)
+        resp = _r.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",
+            params={"drop_pending_updates": "true"},
+            timeout=10
+        )
+        print(f"[MAIN] deleteWebhook lần 2: {resp.status_code}")
+    except Exception as e:
+        print(f"[MAIN] Không xóa được webhook lần 2: {e}")
+
+    # ---------- Build app ----------
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-    # ===== Handlers =====
+    # ---------- Handlers ----------
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(cb_menu))
 
@@ -1654,8 +1772,12 @@ def main():
     app.add_handler(CommandHandler("rt_phish", cmd_rt_phish))
     app.add_handler(CommandHandler("rt_exploit", cmd_rt_exploit))
 
-    print("[ALB] Bot by Anh Khôi — starting v7.1...")
-    app.run_polling(drop_pending_updates=True)
+    print("[ALB] Bot by Anh Khôi — starting v7.2...")
+    app.run_polling(
+        drop_pending_updates=True,
+        poll_interval=1.0,
+        timeout=30,
+    )
 
 
 if __name__ == "__main__":
