@@ -1,4 +1,15 @@
-import re, json, time, random
+# ============================================================
+# fb_tools.py — Tools Facebook
+# - check cookie
+# - get_threads (list box)
+# - send message có behavior
+# - spam loop có anti-ban
+# ============================================================
+import re
+import json
+import time
+import random
+
 from firewall_v7 import FW
 from anti_ban_v3 import ANTIBAN
 from fb_token import TOKEN_GRABBER
@@ -10,6 +21,7 @@ class Facebook:
         self.fw = FW["fb"]
 
     def check(self, cookie):
+        """Check cookie còn sống không."""
         try:
             r = self.fw.get("https://mbasic.facebook.com/profile.php", cookie=cookie)
             if not r or r.status_code != 200:
@@ -20,12 +32,15 @@ class Facebook:
             uid = re.search(r"c_user=(\d+)", cookie)
             ANTIBAN.report(cookie, True)
             GUARD3.record(cookie, True)
-            return {"name": name.group(1).strip() if name else "?",
-                    "uid": uid.group(1) if uid else "?"}
+            return {
+                "name": name.group(1).strip() if name else "?",
+                "uid": uid.group(1) if uid else "?",
+            }
         except Exception:
             return None
 
     def get_threads(self, cookie, limit=500):
+        """Lấy danh sách box Messenger."""
         m = re.search(r"c_user=(\d+)", cookie)
         if not m:
             return {"error": "Thiếu c_user"}
@@ -48,8 +63,10 @@ class Facebook:
                 }
             }}),
         }
-        h = {"Content-Type": "application/x-www-form-urlencoded",
-             "X-FB-Friendly-Name": "MessengerThreadListQuery"}
+        h = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-FB-Friendly-Name": "MessengerThreadListQuery",
+        }
         r = self.fw.post("https://www.facebook.com/api/graphqlbatch/",
                          cookie=cookie, data=form, headers=h)
         if not r:
@@ -62,13 +79,14 @@ class Facebook:
                 "thread_id": n["thread_key"]["thread_fbid"],
                 "thread_name": n.get("name") or "Không tên",
             } for n in nodes
-                   if n.get("thread_key") and n["thread_key"].get("thread_fbid")]
+                if n.get("thread_key") and n["thread_key"].get("thread_fbid")]
             return out
         except Exception as e:
             return {"error": str(e)}
 
-    def send(self, cookie, box_id, text, custom_delay=None):
-        """Gửi tin có behavior. Chống ban chuyên sâu."""
+    def send(self, cookie, box_id, text):
+        """Gửi 1 tin nhắn có behavior + anti-ban."""
+        # Kiểm tra cookie bị disable / cooldown
         if ANTIBAN.is_disabled(cookie):
             return None
         cd = ANTIBAN.in_cooldown(cookie)
@@ -81,6 +99,7 @@ class Facebook:
         if not tok:
             return None
 
+        # Behavior: đọc + biến đổi text
         self.fw.behavior.pre_send()
         text = self.fw.behavior.entropy_mask(
             self.fw.behavior.vary(
@@ -101,9 +120,7 @@ class Facebook:
             "source": "source:chat:web",
             "ephemeral_ttl_mode": "0",
             "__user": tok.user_id,
-            "__a": "1",
-            "__req": "1b",
-            "__rev": "1015919737",
+            "__a": "1", "__req": "1b", "__rev": "1015919737",
             "fb_dtsg": tok.fb_dtsg,
             "jazoest": tok.jazoest,
         }
@@ -112,9 +129,11 @@ class Facebook:
             "Referer": f"https://www.facebook.com/messages/t/{box_id}",
             "Content-Type": "application/x-www-form-urlencoded",
         }
+
+        # Gõ phím
         time.sleep(min(typing, 4.0))
 
-        # biological delay
+        # Biological delay
         bio = ANTIBAN.biological_delay(cookie)
         if bio > 0:
             time.sleep(bio)
@@ -129,8 +148,10 @@ class Facebook:
 
     def spam_loop(self, cookie, boxes, messages, delay,
                   stop_event, on_log=None):
+        """Vòng lặp spam nhiều box với anti-ban."""
         user_delay = max(3.0, float(delay))
 
+        # Warmup bắt buộc nếu cookie mới
         if ANTIBAN.needs_warmup(cookie):
             if on_log:
                 on_log("⚠️ Cookie mới — warmup...")
@@ -139,12 +160,15 @@ class Facebook:
 
         i = 0
         consecutive_ok = 0
+
         while not stop_event.is_set():
+            # Nếu cookie bị disable → dừng
             if ANTIBAN.is_disabled(cookie):
                 if on_log:
                     on_log("🚫 Cookie disabled — dừng task")
                 return
 
+            # Nếu đang cooldown → chờ
             cd = ANTIBAN.in_cooldown(cookie)
             if cd > 0:
                 if on_log:
@@ -161,6 +185,7 @@ class Facebook:
 
                 msg = messages[i % len(messages)]
                 i += 1
+
                 try:
                     r = self.send(cookie, box, msg)
                     if r and r.status_code == 200:
@@ -175,11 +200,12 @@ class Facebook:
                     if on_log:
                         on_log(f"⚠️ {box}: {e}")
 
+                # Delay min 3s + jitter
                 actual_delay = max(3.0, user_delay * random.uniform(0.9, 1.35))
                 if consecutive_ok > 5 and user_delay > 3.0:
                     actual_delay = max(3.0, user_delay * random.uniform(0.75, 1.0))
 
-                # biological
+                # Biological delay nếu 0h-6h
                 if ANTIBAN.is_sleep_hour():
                     actual_delay += random.uniform(5.0, 15.0)
 
