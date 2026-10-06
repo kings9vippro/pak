@@ -1,5 +1,11 @@
-import time, random, threading, json, os
-from datetime import datetime
+# ============================================================
+# cool_features.py — Chức năng lạ và xịn
+# ============================================================
+import time
+import random
+import threading
+import json
+import os
 
 NICK_PREFIX = ["Cô đơn", "Bạc", "Tuyết", "Hắc", "Thanh", "Ngọc", "Hoàng", "Kim", "Mộc", "Thủy"]
 NICK_MID = ["Vô", "Bất", "Thiên", "Địa", "Long", "Phượng", "Kỳ", "Tuyết"]
@@ -7,10 +13,13 @@ NICK_TAIL = ["Tử", "Thần", "Vương", "Kiếm", "Đao", "Kiều", "Nhi", "Ca
 
 
 def random_nick():
+    """Sinh nick ngẫu nhiên."""
     return f"{random.choice(NICK_PREFIX)} {random.choice(NICK_MID)} {random.choice(NICK_TAIL)}"
 
 
 class ZombieSpam:
+    """Spam chậm 5-15 phút/lần (tránh detection)."""
+
     def __init__(self, send_fn, targets, msgs, min_delay=300, max_delay=900):
         self.send_fn = send_fn
         self.targets = targets
@@ -44,6 +53,7 @@ class ZombieSpam:
 
 
 def schedule_send(send_fn, target, msg, delay_seconds):
+    """Hẹn giờ gửi tin."""
     def _run():
         time.sleep(delay_seconds)
         try:
@@ -54,11 +64,13 @@ def schedule_send(send_fn, target, msg, delay_seconds):
 
 
 def extract_uids_from_text(text):
+    """Tìm UID (15-17 số) trong text."""
     import re
     return list(set(re.findall(r'\b\d{15,17}\b', text)))
 
 
 def auto_backup_all():
+    """Backup tất cả cookie đã lưu."""
     from cookie_guard_v3 import GUARD3
     from data_store import COOKIES
     out = {}
@@ -74,6 +86,7 @@ def auto_backup_all():
 
 
 def ip_info():
+    """Lấy thông tin IP server."""
     try:
         import requests
         return requests.get("https://ipinfo.io/json", timeout=10).json()
@@ -82,6 +95,7 @@ def ip_info():
 
 
 def gen_random_msg(n=1):
+    """Sinh tin nhắn random."""
     words = ["alo", "hi", "hú", "ê", "này", "vcl", "tr", "oke", "cay", "thua",
              "chạy đi", "nhanh", "hăng", "im", "nói đi", "kệ", "nhây", "chill",
              "lỏ", "quạo"]
