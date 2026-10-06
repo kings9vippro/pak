@@ -1,5 +1,9 @@
-"""RED TEAM MODULES — SIMULATION ONLY."""
-import os, time, random, base64
+# ============================================================
+# redteam.py — Red Team Sim (không payload thật)
+# ============================================================
+import os
+import time
+import base64
 
 
 class WormSim:
@@ -76,9 +80,22 @@ class RansomSim:
         return {"note": note, "files": out}
 
 
+# ----- PHISH TEMPLATE (KHÔNG có dấu ``` bên trong) -----
+PHISH_FB = ("<html><body><form>"
+            "<input name='email'>"
+            "<input name='pass' type='password'>"
+            "<button>Login</button>"
+            "</form><!--SIM--></body></html>")
+
+PHISH_ZALO = ("<html><body><form>"
+              "<input name='phone'>"
+              "<input name='pass' type='password'>"
+              "<button>Đăng nhập</button>"
+              "</form><!--SIM--></body></html>")
+
 PHISH_TPL = {
-    "fb": "<html><body><form><input name='email'><input name='pass' type='password'><button>Login</button></form><!--SIM--></body></html>",
-    "zalo": "<html><body><form><input name='phone'><input name='pass' type='password'><button>Đăng nhập</button></form><!--SIM--></body></html>",
+    "fb": PHISH_FB,
+    "zalo": PHISH_ZALO,
 }
 
 
