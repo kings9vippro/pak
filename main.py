@@ -1,12 +1,9 @@
 # ============================================================
-# BOT BY ANH KHÔI — ALB FORGE v8.1
-# Telegram: 8845944331:AAEN9CM-mui0Ga_HFENi9I52EcxsWtgg8Sk
-# Admin: 6094686933
-# All-in-one: Zalo QR + Rotate acc + Nhây + Anti-ban v4
-# Đã fix lỗi Playwright Chromium path
+# BOT BY ANH KHÔI
+# Phiên bản: 9.0
+# Chức năng: Quản lý đa tài khoản Zalo, spam, treo nhây
 # ============================================================
 
-# ============ IMPORTS ============
 import os
 import sys
 import re
@@ -25,7 +22,6 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
 
 warnings.filterwarnings("ignore")
 
@@ -43,7 +39,7 @@ from telegram.constants import ParseMode
 
 
 # ============================================================
-# CONFIG
+# CẤU HÌNH
 # ============================================================
 BOT_TOKEN = os.environ.get(
     "BOT_TOKEN",
@@ -62,7 +58,7 @@ MIN_SAFE_DELAY = 3.0
 
 
 # ============================================================
-# HTTP SERVER GIẢ — Giữ Render Free không kill worker
+# HTTP SERVER
 # ============================================================
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -90,20 +86,19 @@ def _start_health_server():
     port = int(os.environ.get("PORT", 8080))
     try:
         server = HTTPServer(("0.0.0.0", port), _HealthHandler)
-        print(f"[HEALTH] HTTP server on port {port}")
+        print(f"[MÁY CHỦ] Đang chạy trên cổng {port}")
         server.serve_forever()
     except Exception as e:
-        print(f"[HEALTH] Lỗi: {e}")
+        print(f"[MÁY CHỦ] Lỗi: {e}")
 
 
 # ============================================================
-# UTILS
+# TIỆN ÍCH
 # ============================================================
 _FALLBACK_UAS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 ]
 
 
@@ -111,23 +106,23 @@ def random_ua():
     return random.choice(_FALLBACK_UAS)
 
 
-def get_uptime(start: datetime) -> str:
+def get_uptime(start):
     e = (datetime.now() - start).total_seconds()
     h, r = divmod(int(e), 3600)
     m, s = divmod(r, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def gen_imei() -> str:
+def gen_imei():
     return "".join(random.choices(string.digits, k=15))
 
 
-def jitter(base: float, f: float = 0.4) -> float:
+def jitter(base, f=0.4):
     return base * random.uniform(1 - f, 1 + f)
 
 
 # ============================================================
-# TASK MANAGER
+# QUẢN LÝ TÁC VỤ
 # ============================================================
 class Task:
     __slots__ = ("id", "type", "owner", "stop", "start", "thread", "meta")
@@ -174,30 +169,8 @@ def new_tid(p):
 
 
 # ============================================================
-# FIREWALL v7 — 7 lớp
+# TƯỜNG LỬA 7 LỚP
 # ============================================================
-class RequestShaper:
-    ORDER = [
-        "Host", "Connection", "Content-Length",
-        "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
-        "Upgrade-Insecure-Requests", "User-Agent", "Accept",
-        "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User",
-        "Sec-Fetch-Dest", "Referer", "Accept-Encoding",
-        "Accept-Language", "Cookie", "Origin", "DNT",
-        "X-FB-Friendly-Name", "X-FB-LSD",
-    ]
-
-    def shape(self, headers):
-        out = {}
-        for k in self.ORDER:
-            if k in headers:
-                out[k] = headers[k]
-        for k, v in headers.items():
-            if k not in out:
-                out[k] = v
-        return out
-
-
 class FingerprintPool:
     PLAT = [
         ("Windows NT 10.0; Win64; x64", False, "Windows"),
@@ -216,7 +189,7 @@ class FingerprintPool:
         else:
             ua = f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v} Safari/537.36"
         return {
-            "ua": ua, "brand": brand, "mobile": mobile, "chrome_v": v,
+            "ua": ua, "brand": brand, "mobile": mobile,
             "lang": random.choice(["vi-VN,vi;q=0.9", "en-US,en;q=0.9"]),
         }
 
@@ -328,13 +301,12 @@ class MultiCircuit:
 
 
 class Firewall:
-    name = "base"
+    name = "Hệ thống"
     BASE_DELAY = 3.0
     RETRY = 4
     BACKOFF = 1.5
 
     def __init__(self):
-        self.shaper = RequestShaper()
         self.fp_pool = FingerprintPool()
         self.behavior = Behavior()
         self.cb = MultiCircuit()
@@ -357,8 +329,9 @@ class Firewall:
         while self.cb.is_open():
             time.sleep(2)
 
-        headers = self.shaper.shape(
-            self.fp_pool.headers(self._fp_for(cookie), kw.pop("headers", {}))
+        headers = self.fp_pool.headers(
+            self._fp_for(cookie),
+            kw.pop("headers", {})
         )
         timeout = kw.pop("timeout", 25)
 
@@ -397,8 +370,8 @@ class Firewall:
     def report(self):
         with self.lock:
             s = self.stats
-        cb = "OPEN" if self.cb.is_open() else "OK"
-        return f"🛡 *{self.name}* OK:`{s['ok']}` Fail:`{s['fail']}` CB:`{cb}`"
+        cb = "Đang mở" if self.cb.is_open() else "Bình thường"
+        return f"🛡 *{self.name}* | Thành công: `{s['ok']}` | Thất bại: `{s['fail']}` | Trạng thái: `{cb}`"
 
 
 class FBFW(Firewall):
@@ -455,7 +428,7 @@ FW = {
 
 
 # ============================================================
-# ANTI-BAN v4 — Học hành vi từng acc
+# CHỐNG BAN v4
 # ============================================================
 @dataclass
 class AccBehavior:
@@ -551,7 +524,7 @@ ANTIBAN4 = AntiBanV4()
 
 
 # ============================================================
-# ACCOUNT POOL
+# BỂ TÀI KHOẢN
 # ============================================================
 class AccountPool:
     def __init__(self):
@@ -619,7 +592,7 @@ POOL = AccountPool()
 
 
 # ============================================================
-# COOKIE VAULT
+# KÉT SẮT COOKIE
 # ============================================================
 class CookieVault:
     def __init__(self):
@@ -676,7 +649,7 @@ VAULT = CookieVault()
 
 
 # ============================================================
-# ZALO TOOLS
+# BỘ MÀU ZALO
 # ============================================================
 ZALO_TEXT_COLORS = [
     {"name": "Đỏ", "code": "red"},
@@ -694,6 +667,9 @@ ZALO_TEXT_COLORS = [
 ]
 
 
+# ============================================================
+# CÔNG CỤ ZALO
+# ============================================================
 class Zalo:
     def __init__(self, imei, cookies):
         self.imei = imei
@@ -722,11 +698,11 @@ class Zalo:
         d = r.json()
         ud = d.get("data")
         if not isinstance(ud, dict):
-            raise Exception("Cookie/IMEI sai")
+            raise Exception("Cookie hoặc IMEI không đúng")
         self.uid = ud.get("send2me_id")
         self.secret_key = ud.get("zpw_enk")
         if not self.secret_key:
-            raise Exception("Không lấy được secret_key")
+            raise Exception("Không lấy được khóa bảo mật")
 
     def _enc(self, params):
         key = base64.b64decode(self.secret_key)
@@ -801,7 +777,7 @@ class Zalo:
 
 
 # ============================================================
-# ZALO QR — Playwright (auto-install Chromium nếu thiếu)
+# ZALO QR LOGIN
 # ============================================================
 class ZaloQRLogin:
     def __init__(self):
@@ -810,18 +786,16 @@ class ZaloQRLogin:
         self.playwright = None
 
     async def _start(self):
-        # --- Đảm bảo có playwright ---
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            print("[QR] Playwright chưa cài → pip install...")
+            print("[QR] Cài đặt Playwright...")
             subprocess.run(
-                [sys.executable, "-m", "pip", "install", "playwright"],
+                [sys.executable, "-m", "pip", "install", "playwright==1.43.0"],
                 check=True,
             )
             from playwright.async_api import async_playwright
 
-        # --- Thử launch, nếu thiếu Chromium thì cài rồi thử lại ---
         last_err = None
         for attempt in range(2):
             try:
@@ -842,16 +816,15 @@ class ZaloQRLogin:
                 last_err = e
                 err_str = str(e)
                 if "Executable doesn't exist" in err_str and attempt == 0:
-                    print("[QR] Chromium chưa có → tự cài...")
+                    print("[QR] Cài Chromium...")
                     try:
                         subprocess.run(
                             [sys.executable, "-m", "playwright", "install", "chromium"],
                             timeout=300,
                             check=True,
                         )
-                        print("[QR] Đã cài Chromium xong, thử lại...")
                     except Exception as e2:
-                        print(f"[QR] Không cài được: {e2}")
+                        print(f"[QR] Lỗi cài: {e2}")
                     try:
                         if self.playwright:
                             await self.playwright.stop()
@@ -910,13 +883,13 @@ class ZaloQRLogin:
             }
         except Exception as e:
             await self._close()
-            return {"error": f"Lỗi tạo QR: {e}"}
+            return {"error": f"Lỗi tạo mã QR: {e}"}
 
     async def poll_login(self, qr_id=None, stop_event=None):
         start = time.time()
         while time.time() - start < QR_TTL:
             if stop_event and stop_event.is_set():
-                return {"error": "Stopped"}
+                return {"error": "Đã dừng"}
             try:
                 url = self.page.url
                 if "chat.zalo.me" in url and "login" not in url:
@@ -927,7 +900,7 @@ class ZaloQRLogin:
                 pass
             await asyncio.sleep(2)
         await self._close()
-        return {"error": "Hết hạn QR (120s)"}
+        return {"error": "Mã QR hết hạn (120 giây)"}
 
     async def _extract(self):
         try:
@@ -965,7 +938,7 @@ class ZaloQRLogin:
             }
         except Exception as e:
             await self._close()
-            return {"error": f"Extract: {e}"}
+            return {"error": f"Lỗi lấy dữ liệu: {e}"}
 
     async def _close(self):
         try:
@@ -989,7 +962,7 @@ def run_async(coro):
 
 
 # ============================================================
-# FACEBOOK TOOLS
+# FACEBOOK
 # ============================================================
 class Facebook:
     def __init__(self):
@@ -1059,7 +1032,7 @@ class Facebook:
 
 
 # ============================================================
-# ZALO ROTATE SPAM
+# SPAM ROTATE
 # ============================================================
 class ZaloRotateSpam:
     def __init__(self, targets, messages, min_gap=1.0, use_color=True):
@@ -1114,7 +1087,7 @@ class ZaloRotateSpam:
                     POOL.report_ok(uid)
                 else:
                     POOL.report_fail(uid)
-                print(f"[ROTATE] {acc['label']} → {target} [{'✅' if ok else '❌'}] {msg_h[:30]}")
+                print(f"[ROTATE] {acc['label']} → {target} [{'OK' if ok else 'LỖI'}]")
             except Exception as e:
                 ANTIBAN4.record(uid, False)
                 POOL.report_fail(uid)
@@ -1130,9 +1103,6 @@ class ZaloRotateSpam:
                 time.sleep(0.1)
 
 
-# ============================================================
-# ZALO NHÂY / TAG / NGÔN
-# ============================================================
 class ZaloNhay(ZaloRotateSpam):
     def __init__(self, targets, messages, min_gap=1.0, tag_user=None):
         super().__init__(targets, messages, min_gap, use_color=False)
@@ -1170,11 +1140,11 @@ class ZaloNhay(ZaloRotateSpam):
                         POOL.report_ok(uid)
                     else:
                         POOL.report_fail(uid)
-                    print(f"[NHAY] {acc['label']} → {target} [{'✅' if ok else '❌'}]")
+                    print(f"[NHÂY] {acc['label']} → {target} [{'OK' if ok else 'LỖI'}]")
                 except Exception as e:
                     ANTIBAN4.record(uid, False)
                     POOL.report_fail(uid)
-                    print(f"[NHAY] Lỗi: {e}")
+                    print(f"[NHÂY] Lỗi: {e}")
 
                 delay = max(self.min_gap, ANTIBAN4.get_delay(uid))
                 delay *= random.uniform(0.9, 1.3)
@@ -1186,94 +1156,229 @@ class ZaloNhay(ZaloRotateSpam):
 
 
 # ============================================================
-# COOKIE GUIDE
+# HƯỚNG DẪN SỬ DỤNG
 # ============================================================
-COOKIE_FB = """📘 LẤY COOKIE FACEBOOK
+HUONG_DAN_SU_DUNG = """📖 HƯỚNG DẪN SỬ DỤNG BOT
 
-Cần: c_user, xs, datr, fr, sb
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 BƯỚC 1: THÊM TÀI KHOẢN ZALO
+━━━━━━━━━━━━━━━━━━━━━━━━
+Gõ lệnh: /qr
 
-Kiwi Browser (Android):
-1. Cài Kiwi + extension Cookie Editor
-2. facebook.com → login
-3. Extension → Export JSON → Copy
+→ Bot mở trình duyệt ẩn, tạo mã QR
+→ Chờ 5-15 giây (lần đầu lâu hơn)
+→ Bot gửi ảnh QR cho bạn
 
-Test: /fb_check <cookie>
+Cách quét QR:
+1. Mở app Zalo trên điện thoại
+2. Bấm biểu tượng QR (góc trên phải)
+3. Quét ảnh QR trong Telegram
+4. Bấm "Đồng ý" trên điện thoại
+
+→ Bot tự động lưu cookie + IMEI vào kho
+→ Làm 3-5 lần với 3-5 tài khoản khác nhau
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 BƯỚC 2: KIỂM TRA TÀI KHOẢN
+━━━━━━━━━━━━━━━━━━━━━━━━
+Gõ lệnh: /ds
+
+→ Bot hiện danh sách tài khoản trong kho
+→ Hiện trạng thái: OK, Lỗi, Rủi ro, Cooldown
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 BƯỚC 3: SPAM ROTATE ĐA TÀI KHOẢN
+━━━━━━━━━━━━━━━━━━━━━━━━
+Gõ lệnh: /spam <ID nhóm> | <nội dung 1;nội dung 2> | <giây>
+
+Ví dụ: /spam 123456789|Chào;Hello;Hi|3
+
+→ Bot dùng lần lượt từng tài khoản
+→ Mỗi 3 giây đổi sang tài khoản khác
+→ Không bao giờ trùng tài khoản
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 BƯỚC 4: TREO NHÂY
+━━━━━━━━━━━━━━━━━━━━━━━━
+Gõ lệnh: /nhay <ID nhóm> | <nội dung 1;nội dung 2> | <giây>
+
+→ Bot spam liên tục vào nhóm
+→ Tự động đổi tài khoản liên tục
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 BƯỚC 5: TREO TAG
+━━━━━━━━━━━━━━━━━━━━━━━━
+Gõ lệnh: /tag <ID nhóm> | <nội dung> | <UID người cần tag> | <giây>
+
+→ Bot spam + tag người được chỉ định
+→ Tự động đổi tài khoản
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 BƯỚC 6: XEM LỊCH SỬ
+━━━━━━━━━━━━━━━━━━━━━━━━
+Gõ lệnh: /cv
+
+→ Bot hiện danh sách tác vụ đang chạy
+→ Gõ /dung <số> để dừng 1 tác vụ
+→ Gõ /dunghet để dừng tất cả
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📌 LƯU Ý QUAN TRỌNG
+━━━━━━━━━━━━━━━━━━━━━━━━
+• Delay tối thiểu 3 giây để tránh bị ban
+• Nên dùng 3-5 tài khoản để an toàn
+• Bot tự động nghỉ khi tài khoản có rủi ro cao
+• Không nên spam liên tục 24/24
+• Nếu tài khoản bị lỗi nhiều → tự động tắt
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📞 HỖ TRỢ
+━━━━━━━━━━━━━━━━━━━━━━━━
+Liên hệ Admin: /admin
+
+Bot được phát triển bởi Anh Khôi
+Phiên bản 9.0
 """
 
-COOKIE_ZALO = """📞 LẤY COOKIE ZALO
 
-Cách 1 — QR (khuyến nghị):
-/zalo_qr → quét 120s → bot tự lưu cookie + IMEI
+HUONG_DAN_LAY_COOKIE = """🔑 HƯỚNG DẪN LẤY COOKIE THỦ CÔNG
 
-Cách 2 — Thủ công:
-1. Kiwi → chat.zalo.me → login
+━━━━━━━━━━━━━━━━━━━━━━━━
+📘 FACEBOOK
+━━━━━━━━━━━━━━━━━━━━━━━━
+Cần các trường: c_user, xs, datr, fr, sb
+
+Cách lấy:
+1. Cài Kiwi Browser (Android)
+2. Cài extension "Cookie Editor"
+3. Đăng nhập facebook.com
+4. Mở extension → Export → Copy JSON
+
+Kiểm tra: /fbkt <cookie>
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📞 ZALO (thủ công)
+━━━━━━━━━━━━━━━━━━━━━━━━
+Cần các trường: zpw_sek, zpw_ver, zpw_type
+
+Cách lấy:
+1. Kiwi Browser → chat.zalo.me → đăng nhập
+2. Extension Cookie Editor → Export
+3. Cần các trường: zpw_sek, zpw_ver=645, zpw_type=30
+
+Thêm vào bot:
+/themacc <imei>|<cookie_json>|<tên gợi nhớ>
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🎮 DISCORD
+━━━━━━━━━━━━━━━━━━━━━━━━
+1. Mở discord.com trên PC
+2. Bấm F12 → Console
+3. Copy token và gửi vào bot
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📢 TELEGRAM
+━━━━━━━━━━━━━━━━━━━━━━━━
+• Bot token: chat @BotFather
+• Chat ID: chat @userinfobot
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+✉ GMAIL
+━━━━━━━━━━━━━━━━━━━━━━━━
+1. Bật 2FA: myaccount.google.com/security
+2. Vào: myaccount.google.com/apppasswords
+3. Tạo App Password 16 ký tự
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📷 INSTAGRAM
+━━━━━━━━━━━━━━━━━━━━━━━━
+1. Kiwi Browser → instagram.com
 2. Cookie Editor → Export
-3. Cần: zpw_sek, zpw_ver=645, zpw_type=30
+3. Copy sessionid
 
-Gửi bot:
-/add_acc <imei>|<cookie_json>
+━━━━━━━━━━━━━━━━━━━━━━━━
+💼 WECHAT / WECOM
+━━━━━━━━━━━━━━━━━━━━━━━━
+1. work.weixin.qq.com → đăng nhập admin
+2. My Business → copy Corp ID
+3. Apps → tạo app → lấy AgentId + Secret
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📲 SMS
+━━━━━━━━━━━━━━━━━━━━━━━━
+Chỉ cần số điện thoại, không cần cookie
 """
-
-COOKIE_DISCORD = "🎮 Discord: F12 → Console → lấy token"
 
 
 # ============================================================
-# MENU
+# GIAO DIỆN MENU
 # ============================================================
 MAIN_KB = [
     [InlineKeyboardButton("📘 Facebook", callback_data="m_fb"),
      InlineKeyboardButton("📞 Zalo", callback_data="m_zalo")],
-    [InlineKeyboardButton("🎯 Rotate acc", callback_data="m_rotate"),
+    [InlineKeyboardButton("🎯 Spam đa acc", callback_data="m_rotate"),
      InlineKeyboardButton("🎭 Treo nhây", callback_data="m_nhay")],
-    [InlineKeyboardButton("🔐 Acc pool", callback_data="m_pool"),
+    [InlineKeyboardButton("🔐 Kho tài khoản", callback_data="m_pool"),
      InlineKeyboardButton("🎮 Discord", callback_data="m_discord")],
     [InlineKeyboardButton("📢 Telegram", callback_data="m_telegram"),
      InlineKeyboardButton("✉ Gmail", callback_data="m_gmail")],
     [InlineKeyboardButton("📲 SMS", callback_data="m_sms"),
      InlineKeyboardButton("📷 Instagram", callback_data="m_ig")],
     [InlineKeyboardButton("💼 WeChat", callback_data="m_wechat"),
-     InlineKeyboardButton("🛡 Firewall", callback_data="m_fw")],
-    [InlineKeyboardButton("⚙ Rate", callback_data="m_rate"),
-     InlineKeyboardButton("📖 Guide", callback_data="m_guide")],
-    [InlineKeyboardButton("📋 Tasks", callback_data="m_tasks"),
-     InlineKeyboardButton("🔥 Cool", callback_data="m_cool")],
+     InlineKeyboardButton("🛡 Tường lửa", callback_data="m_fw")],
+    [InlineKeyboardButton("📖 Hướng dẫn", callback_data="m_guide"),
+     InlineKeyboardButton("🔑 Lấy cookie", callback_data="m_cookie")],
+    [InlineKeyboardButton("📋 Tác vụ", callback_data="m_tasks"),
+     InlineKeyboardButton("🔥 Tiện ích", callback_data="m_cool")],
 ]
 
+
 MENU_TEXT = {
-    "m_fb": ("📘 *Facebook*\n\n"
-             "`/fb_check <cookie>`\n"
-             "`/fb_send <cookie>|<box>|<msg>`\n"
-             "`/fb_spam <cookie>|<box1,box2>|<msg1;msg2>|<delay>`"),
-    "m_zalo": ("📞 *Zalo*\n\n"
-               "`/zalo_qr` — QR login\n"
-               "`/zalo_check <imei>|<cookie>`\n"
-               "`/zalo_groups <imei>|<cookie>`\n"
-               "`/zalo_spam <imei>|<cookie>|<gid>|<msg>|<delay>`"),
-    "m_rotate": ("🎯 *Rotate đa acc*\n\n"
-                 "`/add_acc <imei>|<cookie_json>|<label>`\n"
-                 "`/list_acc`\n"
-                 "`/zalo_rotate <gid1,gid2>|<msg1;msg2>|<min_gap>`\n"
-                 "_Mỗi 1s đổi acc luân phiên — không trùng_"),
-    "m_nhay": ("🎭 *Treo nhây*\n\n"
-               "`/zalo_nhay <gid1,gid2>|<msg1;msg2>|<gap>`\n"
-               "`/zalo_tag <gid>|<msg>|<tag_user>|<gap>`\n"
-               "`/zalo_ngon <gid>|<msg_dài1;msg_dài2>|<gap>`"),
-    "m_pool": ("🔐 *Acc Pool*\n\n"
-               "`/list_acc` — xem pool\n"
-               "`/acc_risk <uid>` — risk score\n"
-               "`/vault` — xem vault\n"
-               "`/del_acc <uid>` — xóa acc"),
-    "m_discord": "🎮 `/discord_spam <token>|<channel>|<msg1;msg2>|<delay>`",
-    "m_telegram": "📢 `/tele_spam <token>|<chat>|<msg1;msg2>|<delay>`",
-    "m_gmail": "✉ `/gmail_spam <email>|<pass>|<to>|<msg1;msg2>|<delay>`",
-    "m_sms": "📲 `/sms_spam <phone>`",
-    "m_ig": "📷 `/ig_spam <sessionid>|<thread_ids>|<msg1;msg2>|<delay>`",
-    "m_wechat": "💼 `/wechat_spam <corpid>|<secret>|<agent>|<user>|<msgs>|<delay>`",
-    "m_fw": "🛡 `/fw_status` `/fw_reset`",
-    "m_rate": f"⚙ Delay min {MIN_SAFE_DELAY}s. Dùng /rate để xem.",
-    "m_guide": "📖 `/cookie_fb` `/cookie_zalo` `/cookie_discord`",
-    "m_cool": "🔥 `/nick` `/uid_extract` `/ip_info` `/backup_all`",
-    "m_tasks": "📋 `/tasks` `/stop <n>` `/stop_all`",
+    "m_fb": (
+        "📘 *FACEBOOK*\n\n"
+        "• `/fbkt <cookie>` — Kiểm tra cookie\n"
+        "• `/fbgui <cookie>|<ID box>|<nội dung>` — Gửi 1 tin\n"
+        "• `/fbspam <cookie>|<box1,box2>|<tin1;tin2>|<giây>` — Spam"
+    ),
+    "m_zalo": (
+        "📞 *ZALO*\n\n"
+        "• `/qr` — Tạo mã QR đăng nhập\n"
+        "• `/zkt <imei>|<cookie>` — Kiểm tra\n"
+        "• `/znhom <imei>|<cookie>` — Danh sách nhóm\n"
+        "• `/zspam <imei>|<cookie>|<ID nhóm>|<tin>|<giây>`"
+    ),
+    "m_rotate": (
+        "🎯 *SPAM ĐA TÀI KHOẢN*\n\n"
+        "• `/themacc <imei>|<cookie>|<tên>` — Thêm thủ công\n"
+        "• `/ds` — Xem danh sách\n"
+        "• `/spam <ID nhóm>|<tin1;tin2>|<giây>`\n"
+        "• `/xoaacc <uid>` — Xóa tài khoản\n\n"
+        "_Bot tự đổi tài khoản mỗi giây, không trùng_"
+    ),
+    "m_nhay": (
+        "🎭 *TREO NHÂY*\n\n"
+        "• `/nhay <ID nhóm>|<tin1;tin2>|<giây>`\n"
+        "• `/tag <ID nhóm>|<tin>|<UID tag>|<giây>`\n"
+        "• `/ngon <ID nhóm>|<tin dài 1;tin dài 2>|<giây>`"
+    ),
+    "m_pool": (
+        "🔐 *KHO TÀI KHOẢN*\n\n"
+        "• `/ds` — Danh sách\n"
+        "• `/ruiro <uid>` — Xem rủi ro\n"
+        "• `/kho` — Xem kho cookie\n"
+        "• `/xoaacc <uid>` — Xóa"
+    ),
+    "m_discord": "🎮 `/dspam <token>|<kênh>|<tin1;tin2>|<giây>`",
+    "m_telegram": "📢 `/tspam <token>|<chat>|<tin1;tin2>|<giây>`",
+    "m_gmail": "✉ `/gspam <email>|<mật khẩu>|<đến>|<tin1;tin2>|<giây>`",
+    "m_sms": "📲 `/sms <số điện thoại>`",
+    "m_ig": "📷 `/igspam <sessionid>|<ID>|<tin1;tin2>|<giây>`",
+    "m_wechat": "💼 `/wcspam <corpid>|<secret>|<agent>|<user>|<tin1;tin2>|<giây>`",
+    "m_fw": "🛡 `/tuonglua` — Xem trạng thái\n`/reset` — Đặt lại",
+    "m_guide": "📖 Dùng lệnh /hd để xem hướng dẫn chi tiết",
+    "m_cookie": "🔑 Dùng lệnh /cookie để xem cách lấy cookie",
+    "m_tasks": "📋 `/cv` — Xem tác vụ\n`/dung <số>` — Dừng\n`/dunghet` — Dừng tất cả",
+    "m_cool": "🔥 `/nick` — Nick random\n`/uid <văn bản>` — Trích UID\n`/ip` — IP máy chủ",
 }
 
 
@@ -1281,24 +1386,30 @@ def admin_only(func):
     async def w(update, ctx):
         if update.effective_user.id not in ADMIN_IDS:
             if update.message:
-                await update.message.reply_text("⛔ Không có quyền. Bot by Anh Khôi.")
+                await update.message.reply_text(
+                    "⛔ Bạn không có quyền sử dụng bot này.\n"
+                    "Liên hệ Admin để được cấp quyền."
+                )
             return
         return await func(update, ctx)
     return w
 
 
 # ============================================================
-# HANDLERS - START
+# LỆNH START
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Không có quyền.")
+        await update.message.reply_text("⛔ Bạn không có quyền sử dụng bot.")
         return
     await update.message.reply_text(
-        "🔥 *ALB FORGE v8.1*\n"
-        "_Bot by Anh Khôi_\n"
-        f"_Pool: {POOL.size()} acc_\n\n"
-        "Chọn chức năng:",
+        "🔥 *BOT ĐA NĂNG*\n\n"
+        f"👤 Phát triển: *Anh Khôi*\n"
+        f"📦 Phiên bản: *9.0*\n"
+        f"🎯 Tài khoản: *{POOL.size()}* trong kho\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Chọn chức năng bên dưới:\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
         reply_markup=InlineKeyboardMarkup(MAIN_KB),
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -1312,21 +1423,24 @@ async def cb_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif q.data == "m_tasks":
         tasks = TASKS.by_owner(q.from_user.id)
         if not tasks:
-            await q.edit_message_text("📭 Không có task.")
+            await q.edit_message_text("📭 Chưa có tác vụ nào đang chạy.")
             return
-        text = "*📋 Tasks:*\n\n"
+        text = "*📋 TÁC VỤ ĐANG CHẠY:*\n\n"
         for i, t in enumerate(tasks, 1):
-            text += f"`{i}.` [{t.type}] {t.uptime()}\n"
-        text += "\n`/stop <n>` `/stop_all`"
+            text += f"`{i}.` Loại: {t.type} | Đã chạy: {t.uptime()}\n"
+        text += "\nDùng `/dung <số>` để dừng"
         await q.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 # ============================================================
-# HANDLERS - ZALO QR
+# LỆNH ZALO QR
 # ============================================================
 @admin_only
-async def cmd_zalo_qr(update, ctx):
-    await update.message.reply_text("⏳ Đang khởi động browser... (5-15s lần đầu)")
+async def cmd_qr(update, ctx):
+    await update.message.reply_text(
+        "⏳ Đang tạo mã QR...\n"
+        "Vui lòng chờ 5-15 giây"
+    )
 
     qr = ZaloQRLogin()
     try:
@@ -1334,7 +1448,7 @@ async def cmd_zalo_qr(update, ctx):
             None, lambda: run_async(qr.create_qr())
         )
     except Exception as e:
-        await update.message.reply_text(f"❌ Lỗi tạo QR: {e}")
+        await update.message.reply_text(f"❌ Lỗi tạo mã QR: {e}")
         return
 
     if "error" in info:
@@ -1344,12 +1458,16 @@ async def cmd_zalo_qr(update, ctx):
     await update.message.reply_photo(
         photo=info["qr_image"],
         caption=(
-            f"📷 *Quét QR bằng app Zalo*\n\n"
-            f"1. Mở Zalo → biểu tượng QR (góc phải trên)\n"
-            f"2. Quét ảnh trên\n"
-            f"3. Bấm *Đồng ý* trên điện thoại\n\n"
-            f"⏱ Hết hạn: *{info['ttl']}s*\n"
-            f"⏳ Đang chờ quét..."
+            "📷 *MÃ QR ĐĂNG NHẬP ZALO*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "Cách quét:\n"
+            "1️⃣ Mở app Zalo trên điện thoại\n"
+            "2️⃣ Bấm biểu tượng QR (góc trên phải)\n"
+            "3️⃣ Quét ảnh trên\n"
+            "4️⃣ Bấm *Đồng ý* trên điện thoại\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"⏱ Hết hạn sau: *{info['ttl']} giây*\n"
+            "⏳ Đang chờ bạn quét..."
         ),
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -1373,7 +1491,7 @@ async def cmd_zalo_qr(update, ctx):
     res = result_box.get("r")
     if not res or "error" in res:
         await update.message.reply_text(
-            f"❌ {res.get('error') if res else 'Timeout'}"
+            f"❌ {res.get('error') if res else 'Hết thời gian chờ'}"
         )
         return
 
@@ -1387,33 +1505,38 @@ async def cmd_zalo_qr(update, ctx):
 
     cookie_str = json.dumps(cookies, indent=2, ensure_ascii=False)
     await update.message.reply_text(
-        f"✅ *ĐĂNG NHẬP ZALO THÀNH CÔNG!*\n\n"
-        f"🏷 Label: `{label}`\n"
+        "✅ *ĐĂNG NHẬP ZALO THÀNH CÔNG!*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏷 Tên gợi nhớ: `{label}`\n"
         f"🆔 IMEI: `{imei}`\n"
-        f"👤 UID: `{uid}`\n\n"
-        f"🍪 Cookie:\n{cookie_str}\n\n"
-        f"📊 Pool: *{POOL.size()} acc*\n"
-        f"Dùng `/zalo_rotate` để bắt đầu."
+        f"👤 UID: `{uid}`\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🍪 *Cookie:*\n{cookie_str}\n\n"
+        f"📊 Kho hiện tại: *{POOL.size()} tài khoản*\n\n"
+        "💡 Bước tiếp theo:\n"
+        "• Gõ `/ds` để xem danh sách\n"
+        "• Gõ `/spam` để bắt đầu spam"
     )
 
 
 # ============================================================
-# HANDLERS - ADD/LIST ACC
+# LỆNH QUẢN LÝ TÀI KHOẢN
 # ============================================================
 @admin_only
-async def cmd_add_acc(u, c):
-    t = u.message.text.replace("/add_acc ", "", 1)
+async def cmd_themacc(u, c):
+    t = u.message.text.replace("/themacc ", "", 1)
     p = t.split("|")
     if len(p) < 2:
         await u.message.reply_text(
-            "Cú pháp: /add_acc <imei>|<cookie_json>|<label>"
+            "❌ Cú pháp: `/themacc <imei>|<cookie>|<tên>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     imei = p[0].strip()
     try:
         cookies = json.loads(p[1].strip())
     except Exception as e:
-        await u.message.reply_text(f"❌ Cookie JSON sai: {e}")
+        await u.message.reply_text(f"❌ Cookie không hợp lệ: {e}")
         return
     label = p[2].strip() if len(p) > 2 else f"acc{POOL.size() + 1}"
     uid = cookies.get("zalo_u_id") or imei
@@ -1423,239 +1546,271 @@ async def cmd_add_acc(u, c):
 
     if ok_pool:
         await u.message.reply_text(
-            f"✅ Đã thêm `{label}` | Pool: `{POOL.size()}` acc",
+            f"✅ Đã thêm tài khoản `{label}`\n"
+            f"📊 Kho hiện tại: *{POOL.size()} tài khoản*",
             parse_mode=ParseMode.MARKDOWN,
         )
     else:
-        await u.message.reply_text("⚠️ Acc đã tồn tại.")
+        await u.message.reply_text("⚠️ Tài khoản này đã có trong kho.")
 
 
 @admin_only
-async def cmd_list_acc(u, c):
+async def cmd_ds(u, c):
     accs = POOL.list_all()
     if not accs:
-        await u.message.reply_text("📭 Pool trống.")
+        await u.message.reply_text(
+            "📭 Kho tài khoản đang trống.\n"
+            "Gõ /qr để thêm tài khoản đầu tiên."
+        )
         return
-    text = f"📋 *Pool: {len(accs)} acc*\n\n"
+    text = f"📋 *DANH SÁCH TÀI KHOẢN* ({len(accs)})\n\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for i, a in enumerate(accs, 1):
         risk = ANTIBAN4.get_risk(a["uid"])
         cd = ANTIBAN4.in_cooldown(a["uid"])
+        status = "✅" if a["enabled"] else "❌"
+        if cd > 0:
+            status = "⏸️"
         text += (
-            f"`{i}.` *{a['label']}* "
-            f"| OK:`{a['ok_count']}` Fail:`{a['fail_count']}` "
-            f"| Risk:`{risk:.2f}` CD:`{cd:.0f}s` "
-            f"| {'✅' if a['enabled'] else '❌'}\n"
+            f"`{i}.` {a['label']} {status}\n"
+            f"   Thành công: `{a['ok_count']}` | Lỗi: `{a['fail_count']}`\n"
+            f"   Rủi ro: `{risk:.2f}` | Nghỉ: `{cd:.0f}giây`\n\n"
         )
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    text += "💡 Dùng /xoaacc <uid> để xóa tài khoản"
     await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_del_acc(u, c):
+async def cmd_xoaacc(u, c):
     if not c.args:
-        await u.message.reply_text("Cú pháp: /del_acc <uid>")
+        await u.message.reply_text("❌ Cú pháp: `/xoaacc <uid>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     uid = c.args[0].strip()
     VAULT.remove(uid, "zalo")
     with POOL.lock:
         POOL.accounts = [a for a in POOL.accounts if a["uid"] != uid]
-    await u.message.reply_text(f"✅ Đã xóa `{uid}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"✅ Đã xóa tài khoản `{uid}`",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_vault(u, c):
+async def cmd_kho(u, c):
     accs = VAULT.list_all("zalo")
     if not accs:
-        await u.message.reply_text("📭 Vault trống.")
+        await u.message.reply_text("📭 Kho cookie đang trống.")
         return
-    text = f"🔐 *Vault: {len(accs)} acc*\n\n"
+    text = f"🔐 *KHO COOKIE* ({len(accs)})\n\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for i, a in enumerate(accs[:30], 1):
-        text += f"`{i}.` {a['label']} | UID: `{a['uid'][:16]}`\n"
+        text += f"`{i}.` {a['label']} | UID: `{a['uid'][:16]}...`\n"
     await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_acc_risk(u, c):
+async def cmd_ruiro(u, c):
     if not c.args:
-        await u.message.reply_text("Cú pháp: /acc_risk <uid>")
+        await u.message.reply_text("❌ Cú pháp: `/ruiro <uid>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     st = ANTIBAN4.stats(c.args[0].strip())
     await u.message.reply_text(
-        f"📊 *Acc Risk:*\n"
-        f"• UID: `{st['uid']}`\n"
-        f"• OK: `{st['ok']}`\n"
-        f"• Fail: `{st['fail']}`\n"
-        f"• Risk: `{st['risk']:.2f}`\n"
-        f"• Cooldown: `{st['cooldown_left']:.0f}s`\n"
-        f"• Delay: `{st['current_delay']:.1f}s`",
+        f"📊 *THÔNG TIN RỦI RO*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 UID: `{st['uid']}`\n"
+        f"✅ Thành công: `{st['ok']}`\n"
+        f"❌ Thất bại: `{st['fail']}`\n"
+        f"⚠️ Điểm rủi ro: `{st['risk']:.2f}`\n"
+        f"⏸️ Đang nghỉ: `{st['cooldown_left']:.0f} giây`\n"
+        f"⏱ Delay hiện tại: `{st['current_delay']:.1f} giây`",
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 # ============================================================
-# HANDLERS - ROTATE / NHÂY / TAG
+# LỆNH SPAM / NHÂY
 # ============================================================
 @admin_only
-async def cmd_zalo_rotate(u, c):
-    t = u.message.text.replace("/zalo_rotate ", "", 1)
+async def cmd_spam(u, c):
+    t = u.message.text.replace("/spam ", "", 1)
     p = t.split("|")
     if len(p) < 3:
         await u.message.reply_text(
-            "Cú pháp: /zalo_rotate <gid1,gid2>|<msg1;msg2>|<min_gap>"
+            "❌ Cú pháp: `/spam <ID nhóm>|<tin1;tin2>|<giây>`\n\n"
+            "Ví dụ: `/spam 123456|Chào;Hello|3`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     if POOL.size() == 0:
-        await u.message.reply_text("❌ Pool trống. Dùng /zalo_qr trước.")
+        await u.message.reply_text(
+            "❌ Kho tài khoản trống.\nDùng /qr để thêm trước."
+        )
         return
     targets = [x.strip() for x in p[0].split(",") if x.strip()]
     msgs = [x.strip() for x in p[1].split(";") if x.strip()]
     min_gap = max(1.0, float(p[2].strip()))
 
-    task = Task(new_tid("zalo_rotate"), "zalo_rotate", u.effective_user.id)
+    task = Task(new_tid("spam"), "Spam đa tài khoản", u.effective_user.id)
     spam = ZaloRotateSpam(targets, msgs, min_gap)
     task.stop = spam.stop
     spam.start()
     TASKS.add(task)
 
     await u.message.reply_text(
-        f"✅ *Rotate task* `{task.id}`\n"
-        f"• Targets: `{len(targets)}`\n"
-        f"• Pool: `{POOL.size()}` acc\n"
-        f"• Min gap: `{min_gap}s`\n"
-        f"• Mỗi 1s đổi acc luân phiên — không trùng.",
+        f"✅ *ĐÃ BẮT ĐẦU SPAM*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 Nhóm: `{len(targets)}`\n"
+        f"📦 Tài khoản: `{POOL.size()}`\n"
+        f"⏱ Delay: `{min_gap} giây`\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💡 Bot sẽ tự đổi tài khoản mỗi lần gửi\n"
+        "Dùng /cv để xem, /dung để dừng",
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 @admin_only
-async def cmd_zalo_nhay(u, c):
-    t = u.message.text.replace("/zalo_nhay ", "", 1)
+async def cmd_nhay(u, c):
+    t = u.message.text.replace("/nhay ", "", 1)
     p = t.split("|")
     if len(p) < 2:
         await u.message.reply_text(
-            "Cú pháp: /zalo_nhay <gid1,gid2>|<msg1;msg2>|<min_gap>"
+            "❌ Cú pháp: `/nhay <ID nhóm>|<tin1;tin2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     if POOL.size() == 0:
-        await u.message.reply_text("❌ Pool trống.")
+        await u.message.reply_text("❌ Kho tài khoản trống.")
         return
     targets = [x.strip() for x in p[0].split(",") if x.strip()]
     msgs = [x.strip() for x in p[1].split(";") if x.strip()]
     min_gap = max(1.0, float(p[2].strip())) if len(p) > 2 else 1.0
 
-    task = Task(new_tid("zalo_nhay"), "zalo_nhay", u.effective_user.id)
+    task = Task(new_tid("nhay"), "Treo nhây", u.effective_user.id)
     nhay = ZaloNhay(targets, msgs, min_gap)
     task.stop = nhay.stop
     nhay.start()
     TASKS.add(task)
     await u.message.reply_text(
-        f"✅ Nhây task `{task.id}`", parse_mode=ParseMode.MARKDOWN
+        f"✅ *ĐÃ BẮT ĐẦU TREO NHÂY*\n\n"
+        f"🎯 Nhóm: `{len(targets)}`\n"
+        f"📦 Tài khoản: `{POOL.size()}`\n"
+        f"⏱ Delay: `{min_gap} giây`",
+        parse_mode=ParseMode.MARKDOWN,
     )
 
 
 @admin_only
-async def cmd_zalo_tag(u, c):
-    t = u.message.text.replace("/zalo_tag ", "", 1)
+async def cmd_tag(u, c):
+    t = u.message.text.replace("/tag ", "", 1)
     p = t.split("|")
     if len(p) < 3:
         await u.message.reply_text(
-            "Cú pháp: /zalo_tag <gid1,gid2>|<msg1;msg2>|<tag_user>|<min_gap>"
+            "❌ Cú pháp: `/tag <ID nhóm>|<tin>|<UID tag>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     if POOL.size() == 0:
-        await u.message.reply_text("❌ Pool trống.")
+        await u.message.reply_text("❌ Kho tài khoản trống.")
         return
     targets = [x.strip() for x in p[0].split(",") if x.strip()]
     msgs = [x.strip() for x in p[1].split(";") if x.strip()]
     tag_user = p[2].strip()
     min_gap = max(1.0, float(p[3].strip())) if len(p) > 3 else 1.0
 
-    task = Task(new_tid("zalo_tag"), "zalo_tag", u.effective_user.id)
+    task = Task(new_tid("tag"), "Treo tag", u.effective_user.id)
     tag = ZaloNhay(targets, msgs, min_gap, tag_user=tag_user)
     task.stop = tag.stop
     tag.start()
     TASKS.add(task)
     await u.message.reply_text(
-        f"✅ Tag task `{task.id}` → @{tag_user}",
+        f"✅ *ĐÃ BẮT ĐẦU TREO TAG*\n\n"
+        f"🎯 Nhóm: `{len(targets)}`\n"
+        f"🏷 Tag: `@{tag_user}`\n"
+        f"⏱ Delay: `{min_gap} giây`",
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 @admin_only
-async def cmd_zalo_ngon(u, c):
-    t = u.message.text.replace("/zalo_ngon ", "", 1)
+async def cmd_ngon(u, c):
+    t = u.message.text.replace("/ngon ", "", 1)
     p = t.split("|")
     if len(p) < 2:
         await u.message.reply_text(
-            "Cú pháp: /zalo_ngon <gid>|<msg_dài1;msg_dài2>|<min_gap>"
+            "❌ Cú pháp: `/ngon <ID nhóm>|<tin dài1;tin dài2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     if POOL.size() == 0:
-        await u.message.reply_text("❌ Pool trống.")
+        await u.message.reply_text("❌ Kho tài khoản trống.")
         return
     targets = [x.strip() for x in p[0].split(",") if x.strip()]
     msgs = [x.strip() for x in p[1].split(";") if x.strip()]
     min_gap = max(1.0, float(p[2].strip())) if len(p) > 2 else 1.0
 
-    task = Task(new_tid("zalo_ngon"), "zalo_ngon", u.effective_user.id)
+    task = Task(new_tid("ngon"), "Treo ngôn", u.effective_user.id)
     ngon = ZaloNhay(targets, msgs, min_gap)
     task.stop = ngon.stop
     ngon.start()
     TASKS.add(task)
     await u.message.reply_text(
-        f"✅ Ngôn task `{task.id}`", parse_mode=ParseMode.MARKDOWN
+        f"✅ *ĐÃ BẮT ĐẦU TREO NGÔN*\n\n"
+        f"🎯 Nhóm: `{len(targets)}`\n"
+        f"⏱ Delay: `{min_gap} giây`",
+        parse_mode=ParseMode.MARKDOWN,
     )
 
 
 # ============================================================
-# HANDLERS - ZALO BASIC
+# LỆNH ZALO CƠ BẢN
 # ============================================================
 @admin_only
-async def cmd_zalo_check(u, c):
-    t = u.message.text.replace("/zalo_check ", "", 1)
+async def cmd_zkt(u, c):
+    t = u.message.text.replace("/zkt ", "", 1)
     if "|" not in t:
-        await u.message.reply_text("Cú pháp: /zalo_check <imei>|<cookie>")
+        await u.message.reply_text("❌ Cú pháp: `/zkt <imei>|<cookie>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     imei, ck = t.split("|", 1)
     try:
         z = Zalo(imei.strip(), json.loads(ck))
-        await u.message.reply_text(f"✅ Zalo OK! UID: {z.uid}")
+        await u.message.reply_text(
+            f"✅ Cookie Zalo còn sống!\n👤 UID: `{z.uid}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
     except Exception as e:
         await u.message.reply_text(f"❌ {e}")
 
 
 @admin_only
-async def cmd_zalo_groups(u, c):
-    t = u.message.text.replace("/zalo_groups ", "", 1)
+async def cmd_znhom(u, c):
+    t = u.message.text.replace("/znhom ", "", 1)
     if "|" not in t:
-        await u.message.reply_text("Cú pháp: /zalo_groups <imei>|<cookie>")
+        await u.message.reply_text("❌ Cú pháp: `/znhom <imei>|<cookie>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     imei, ck = t.split("|", 1)
     try:
         z = Zalo(imei.strip(), json.loads(ck))
         gs = z.groups()
-        msg = f"📦 *{len(gs)} nhóm:*\n\n"
+        msg = f"📦 *{len(gs)} NHÓM ZALO:*\n\n"
         for i, g in enumerate(gs[:60], 1):
-            msg += f"`{i}.` {g['name'][:40]} — `{g['id']}`\n"
+            msg += f"`{i}.` {g['name'][:40]}\n   ID: `{g['id']}`\n"
         await u.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         await u.message.reply_text(f"❌ {e}")
 
 
 @admin_only
-async def cmd_zalo_color_list(u, c):
-    text = "*🎨 Bảng màu Zalo:*\n\n"
-    for i, col in enumerate(ZALO_TEXT_COLORS, 1):
-        text += f"`{i}.` {col['name']} — `{col['code']}`\n"
-    await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
-
-
-@admin_only
-async def cmd_zalo_spam(u, c):
-    t = u.message.text.replace("/zalo_spam ", "", 1)
+async def cmd_zspam(u, c):
+    t = u.message.text.replace("/zspam ", "", 1)
     p = t.split("|")
     if len(p) < 5:
         await u.message.reply_text(
-            "Cú pháp: /zalo_spam <imei>|<cookie>|<gid>|<msg1;msg2>|<delay>"
+            "❌ Cú pháp: `/zspam <imei>|<cookie>|<ID nhóm>|<tin1;tin2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     imei = p[0].strip()
@@ -1663,7 +1818,7 @@ async def cmd_zalo_spam(u, c):
     targets = [x.strip() for x in p[2].split(",") if x.strip()]
     msgs = [x.strip() for x in p[3].split(";") if x.strip()]
     delay = max(3.0, float(p[4].strip()))
-    task = Task(new_tid("zalo_spam"), "zalo_spam", u.effective_user.id)
+    task = Task(new_tid("zspam"), "Spam Zalo đơn", u.effective_user.id)
 
     def w():
         try:
@@ -1677,58 +1832,69 @@ async def cmd_zalo_spam(u, c):
                             return
                         z.set_typing(tid, True)
                         time.sleep(random.uniform(1.5, 3))
-                        r = z.send(msg, tid, True)
-                        print(f"[zalo_spam] {tid}: {'✅' if r and r.status_code == 200 else '❌'}")
+                        z.send(msg, tid, True)
                         time.sleep(delay)
         except Exception as e:
-            print(f"[zalo_spam] {e}")
+            print(f"[zspam] {e}")
 
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(
+        f"✅ Đã bắt đầu spam 1 tài khoản\n"
+        f"Tác vụ: `{task.id}`",
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 # ============================================================
-# HANDLERS - FACEBOOK
+# LỆNH FACEBOOK
 # ============================================================
 @admin_only
-async def cmd_fb_check(u, c):
-    cookie = u.message.text.replace("/fb_check ", "", 1).strip()
+async def cmd_fbkt(u, c):
+    cookie = u.message.text.replace("/fbkt ", "", 1).strip()
     info = Facebook().check(cookie)
     if info:
         await u.message.reply_text(
-            f"✅ Cookie sống\n👤 {info['name']}\n🆔 {info['uid']}"
+            f"✅ Cookie Facebook còn sống!\n"
+            f"👤 Tên: {info['name']}\n"
+            f"🆔 UID: `{info['uid']}`",
+            parse_mode=ParseMode.MARKDOWN,
         )
     else:
-        await u.message.reply_text("❌ Cookie chết")
+        await u.message.reply_text("❌ Cookie đã chết hoặc không hợp lệ.")
 
 
 @admin_only
-async def cmd_fb_send(u, c):
-    text = u.message.text.replace("/fb_send ", "", 1)
+async def cmd_fbgui(u, c):
+    text = u.message.text.replace("/fbgui ", "", 1)
     p = text.split("|")
     if len(p) < 3:
-        await u.message.reply_text("Cú pháp: /fb_send <cookie>|<box>|<msg>")
+        await u.message.reply_text("❌ Cú pháp: `/fbgui <cookie>|<ID box>|<tin>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     r = Facebook().send(p[0].strip(), p[1].strip(), "|".join(p[2:]).strip())
-    await u.message.reply_text(f"{'✅' if r and r.status_code == 200 else '❌'}")
+    if r and r.status_code == 200:
+        await u.message.reply_text("✅ Đã gửi tin nhắn!")
+    else:
+        await u.message.reply_text("❌ Gửi tin thất bại.")
 
 
 @admin_only
-async def cmd_fb_spam(u, c):
-    text = u.message.text.replace("/fb_spam ", "", 1)
+async def cmd_fbspam(u, c):
+    text = u.message.text.replace("/fbspam ", "", 1)
     p = text.split("|")
     if len(p) < 4:
         await u.message.reply_text(
-            "Cú pháp: /fb_spam <cookie>|<box1,box2>|<msg1;msg2>|<delay>"
+            "❌ Cú pháp: `/fbspam <cookie>|<box1,box2>|<tin1;tin2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     cookie = p[0].strip()
     boxes = [x.strip() for x in p[1].split(",") if x.strip()]
     msgs = [x.strip() for x in p[2].split(";") if x.strip()]
     delay = max(3.0, float(p[3].strip()))
-    task = Task(new_tid("fb_spam"), "fb_spam", u.effective_user.id)
+    task = Task(new_tid("fbspam"), "Spam Facebook", u.effective_user.id)
     fb = Facebook()
 
     def w():
@@ -1746,32 +1912,27 @@ async def cmd_fb_spam(u, c):
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
-
-
-@admin_only
-async def cmd_fb_threads(u, c):
     await u.message.reply_text(
-        "ℹ️ Dùng /fb_send trực tiếp với box ID."
+        f"✅ Đã bắt đầu spam Facebook\nTác vụ: `{task.id}`",
+        parse_mode=ParseMode.MARKDOWN,
     )
 
 
 # ============================================================
-# HANDLERS - DISCORD / TELEGRAM / GMAIL / SMS / IG / WECHAT
+# LỆNH ĐA NỀN TẢNG KHÁC
 # ============================================================
 @admin_only
-async def cmd_discord_spam(u, c):
-    t = u.message.text.replace("/discord_spam ", "", 1)
+async def cmd_dspam(u, c):
+    t = u.message.text.replace("/dspam ", "", 1)
     p = t.split("|")
     if len(p) < 4:
-        await u.message.reply_text(
-            "Cú pháp: /discord_spam <token>|<channel>|<msg1;msg2>|<delay>"
-        )
+        await u.message.reply_text("❌ Cú pháp: `/dspam <token>|<kênh>|<tin1;tin2>|<giây>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     token, ch = p[0].strip(), p[1].strip()
     msgs = [x.strip() for x in p[2].split(";") if x.strip()]
     delay = max(3.0, float(p[3].strip()))
-    task = Task(new_tid("discord"), "discord", u.effective_user.id)
+    task = Task(new_tid("dspam"), "Spam Discord", u.effective_user.id)
 
     def w():
         i = 0
@@ -1788,22 +1949,22 @@ async def cmd_discord_spam(u, c):
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"✅ Đã bắt đầu spam Discord. Tác vụ: `{task.id}`",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_tele_spam(u, c):
-    t = u.message.text.replace("/tele_spam ", "", 1)
+async def cmd_tspam(u, c):
+    t = u.message.text.replace("/tspam ", "", 1)
     p = t.split("|")
     if len(p) < 4:
-        await u.message.reply_text(
-            "Cú pháp: /tele_spam <token>|<chat>|<msg1;msg2>|<delay>"
-        )
+        await u.message.reply_text("❌ Cú pháp: `/tspam <token>|<chat>|<tin1;tin2>|<giây>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     token, ch = p[0].strip(), p[1].strip()
     msgs = [x.strip() for x in p[2].split(";") if x.strip()]
     delay = max(3.0, float(p[3].strip()))
-    task = Task(new_tid("tele"), "telegram", u.effective_user.id)
+    task = Task(new_tid("tspam"), "Spam Telegram", u.effective_user.id)
 
     def w():
         i = 0
@@ -1822,16 +1983,18 @@ async def cmd_tele_spam(u, c):
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"✅ Đã bắt đầu spam Telegram. Tác vụ: `{task.id}`",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_gmail_spam(u, c):
-    t = u.message.text.replace("/gmail_spam ", "", 1)
+async def cmd_gspam(u, c):
+    t = u.message.text.replace("/gspam ", "", 1)
     p = t.split("|")
     if len(p) < 5:
         await u.message.reply_text(
-            "Cú pháp: /gmail_spam <email>|<pass>|<to>|<msg1;msg2>|<delay>"
+            "❌ Cú pháp: `/gspam <email>|<mật khẩu>|<đến>|<tin1;tin2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     import smtplib
@@ -1843,7 +2006,7 @@ async def cmd_gmail_spam(u, c):
     to = p[2].strip()
     msgs = [x.strip() for x in p[3].split(";") if x.strip()]
     delay = max(10.0, float(p[4].strip()))
-    task = Task(new_tid("gmail"), "gmail", u.effective_user.id)
+    task = Task(new_tid("gspam"), "Spam Gmail", u.effective_user.id)
 
     def w():
         i = 0
@@ -1866,20 +2029,22 @@ async def cmd_gmail_spam(u, c):
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"✅ Đã bắt đầu spam Gmail. Tác vụ: `{task.id}`",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_sms_spam(u, c):
+async def cmd_sms(u, c):
     if not c.args:
-        await u.message.reply_text("Cú pháp: /sms_spam <phone>")
+        await u.message.reply_text("❌ Cú pháp: `/sms <số điện thoại>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     phone = c.args[0].strip()
     if POOL.size() == 0:
-        await u.message.reply_text("❌ Pool trống. Dùng /zalo_qr trước.")
+        await u.message.reply_text("❌ Kho tài khoản trống. Dùng /qr trước.")
         return
 
-    task = Task(new_tid("sms"), "sms", u.effective_user.id)
+    task = Task(new_tid("sms"), "Spam SMS", u.effective_user.id)
 
     def w():
         while not task.stop.is_set():
@@ -1888,8 +2053,8 @@ async def cmd_sms_spam(u, c):
                 time.sleep(1)
                 continue
             try:
-                z = Zalo(acc["imei"], acc["cookies"])
-                msg = f"OTP: {random.randint(100000, 999999)}"
+                Zalo(acc["imei"], acc["cookies"])
+                msg = f"Mã OTP: {random.randint(100000, 999999)}"
                 print(f"[sms] {acc['label']} → {phone}: {msg}")
             except Exception as e:
                 print(f"[sms] {e}")
@@ -1899,25 +2064,27 @@ async def cmd_sms_spam(u, c):
     TASKS.add(task)
     task.thread.start()
     await u.message.reply_text(
-        f"✅ Task SMS `{task.id}` cho `{phone}`",
+        f"✅ Đã bắt đầu spam SMS tới `{phone}`\n"
+        f"Tác vụ: `{task.id}`",
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 @admin_only
-async def cmd_ig_spam(u, c):
-    t = u.message.text.replace("/ig_spam ", "", 1)
+async def cmd_igspam(u, c):
+    t = u.message.text.replace("/igspam ", "", 1)
     p = t.split("|")
     if len(p) < 4:
         await u.message.reply_text(
-            "Cú pháp: /ig_spam <sessionid>|<threads>|<msgs>|<delay>"
+            "❌ Cú pháp: `/igspam <sessionid>|<ID>|<tin1;tin2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     sid = p[0].strip()
     tids = [x.strip() for x in p[1].split(",") if x.strip()]
     msgs = [x.strip() for x in p[2].split(";") if x.strip()]
     delay = max(8.0, float(p[3].strip()))
-    task = Task(new_tid("ig"), "ig", u.effective_user.id)
+    task = Task(new_tid("igspam"), "Spam Instagram", u.effective_user.id)
 
     def w():
         i = 0
@@ -1943,23 +2110,25 @@ async def cmd_ig_spam(u, c):
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"✅ Đã bắt đầu spam Instagram. Tác vụ: `{task.id}`",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_wechat_spam(u, c):
-    t = u.message.text.replace("/wechat_spam ", "", 1)
+async def cmd_wcspam(u, c):
+    t = u.message.text.replace("/wcspam ", "", 1)
     p = t.split("|")
     if len(p) < 6:
         await u.message.reply_text(
-            "Cú pháp: /wechat_spam <corpid>|<secret>|<agent>|<user>|<msgs>|<delay>"
+            "❌ Cú pháp: `/wcspam <corpid>|<secret>|<agent>|<user>|<tin1;tin2>|<giây>`",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
     import requests as rq
     corpid, secret, agent, user = p[0].strip(), p[1].strip(), p[2].strip(), p[3].strip()
     msgs = [x.strip() for x in p[4].split(";") if x.strip()]
     delay = max(4.0, float(p[5].strip()))
-    task = Task(new_tid("wechat"), "wechat", u.effective_user.id)
+    task = Task(new_tid("wcspam"), "Spam WeChat", u.effective_user.id)
 
     def w():
         token = ""
@@ -1991,54 +2160,38 @@ async def cmd_wechat_spam(u, c):
     task.thread = threading.Thread(target=w, daemon=True)
     TASKS.add(task)
     task.thread.start()
-    await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"✅ Đã bắt đầu spam WeChat. Tác vụ: `{task.id}`",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 # ============================================================
-# HANDLERS - SYSTEM
+# LỆNH HỆ THỐNG
 # ============================================================
 @admin_only
-async def cmd_fw_status(u, c):
-    text = "*🛡 FIREWALL v7*\n\n"
+async def cmd_tuonglua(u, c):
+    text = "*🛡 TRẠNG THÁI TƯỜNG LỬA*\n\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for name, fw in FW.items():
         text += fw.report() + "\n"
     await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_fw_reset(u, c):
+async def cmd_reset(u, c):
     for fw in FW.values():
         with fw.lock:
             fw.stats = {"ok": 0, "fail": 0}
-    await u.message.reply_text("✅ Reset firewall.")
+    await u.message.reply_text("✅ Đã đặt lại tường lửa.")
 
 
 @admin_only
-async def cmd_rate(u, c):
-    await u.message.reply_text(
-        f"⚙ *RATE CONFIG*\n\n"
-        f"• Min delay: `{MIN_SAFE_DELAY}s`\n"
-        f"• Pool: `{POOL.size()}` acc\n"
-        f"• FB base: `{FW['fb'].BASE_DELAY}s`\n"
-        f"• Zalo base: `{FW['zalo'].BASE_DELAY}s`\n\n"
-        f"Delay tự động theo risk từng acc.",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+async def cmd_hd(u, c):
+    await u.message.reply_text(HUONG_DAN_SU_DUNG)
 
 
 @admin_only
-async def cmd_cookie_fb(u, c):
-    await u.message.reply_text(COOKIE_FB)
-
-
-@admin_only
-async def cmd_cookie_zalo(u, c):
-    await u.message.reply_text(COOKIE_ZALO)
-
-
-@admin_only
-async def cmd_cookie_discord(u, c):
-    await u.message.reply_text(COOKIE_DISCORD)
+async def cmd_cookie(u, c):
+    await u.message.reply_text(HUONG_DAN_LAY_COOKIE)
 
 
 @admin_only
@@ -2047,15 +2200,15 @@ async def cmd_nick(u, c):
     mids = ["Vô", "Bất", "Thiên", "Địa", "Long"]
     tails = ["Tử", "Thần", "Vương", "Kiếm", "Đao"]
     nick = f"{random.choice(prefixes)} {random.choice(mids)} {random.choice(tails)}"
-    await u.message.reply_text(f"🎭 `{nick}`", parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(f"🎭 Nick: `{nick}`", parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_uid_extract(u, c):
-    t = u.message.text.replace("/uid_extract ", "", 1)
+async def cmd_uid(u, c):
+    t = u.message.text.replace("/uid ", "", 1)
     uids = list(set(re.findall(r'\b\d{15,17}\b', t)))
     if not uids:
-        await u.message.reply_text("❌ Không tìm thấy UID.")
+        await u.message.reply_text("❌ Không tìm thấy UID nào trong văn bản.")
         return
     text = f"🔍 Tìm thấy `{len(uids)}` UID:\n\n"
     for x in uids[:30]:
@@ -2064,122 +2217,137 @@ async def cmd_uid_extract(u, c):
 
 
 @admin_only
-async def cmd_ip_info(u, c):
+async def cmd_ip(u, c):
     try:
         info = requests.get("https://ipinfo.io/json", timeout=10).json()
-        await u.message.reply_text(json.dumps(info, indent=2))
+        text = "🌐 *THÔNG TIN IP MÁY CHỦ*\n\n"
+        text += f"• IP: `{info.get('ip', '?')}`\n"
+        text += f"• Thành phố: `{info.get('city', '?')}`\n"
+        text += f"• Vùng: `{info.get('region', '?')}`\n"
+        text += f"• Quốc gia: `{info.get('country', '?')}`\n"
+        text += f"• Nhà mạng: `{info.get('org', '?')}`\n"
+        await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
-        await u.message.reply_text(f"❌ {e}")
+        await u.message.reply_text(f"❌ Lỗi: {e}")
 
 
 @admin_only
-async def cmd_backup_all(u, c):
-    accs = VAULT.list_all("zalo")
-    for a in accs:
-        path = os.path.join(DATA_DIR, f"zalo_{a['uid']}.bak")
-        with open(path, "w") as f:
-            json.dump({"imei": a["imei"], "cookies": a["cookies"]}, f)
-    await u.message.reply_text(f"✅ Backup `{len(accs)}` acc.")
+async def cmd_admin(u, c):
+    admins = " ".join(f"`{aid}`" for aid in ADMIN_IDS)
+    await u.message.reply_text(
+        f"👑 *QUẢN TRỊ VIÊN BOT*\n\n"
+        f"Danh sách Admin:\n{admins}\n\n"
+        f"👨‍💻 Phát triển: Anh Khôi\n"
+        f"📦 Phiên bản: 9.0",
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 @admin_only
-async def cmd_tasks(u, c):
+async def cmd_cv(u, c):
     tasks = TASKS.by_owner(u.effective_user.id)
     if not tasks:
-        await u.message.reply_text("📭 Không có task.")
+        await u.message.reply_text("📭 Chưa có tác vụ nào đang chạy.")
         return
-    text = "*📋 Tasks:*\n\n"
+    text = "*📋 DANH SÁCH TÁC VỤ:*\n\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for i, t in enumerate(tasks, 1):
-        text += f"`{i}.` [{t.type}] {t.uptime()}\n"
+        text += f"`{i}.` {t.type} | Đã chạy: `{t.uptime()}`\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    text += "💡 Dùng `/dung <số>` để dừng 1 tác vụ\n"
+    text += "Hoặc `/dunghet` để dừng tất cả"
     await u.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 @admin_only
-async def cmd_stop(u, c):
+async def cmd_dung(u, c):
     if not c.args or not c.args[0].isdigit():
-        await u.message.reply_text("Cú pháp: /stop <n>")
+        await u.message.reply_text("❌ Cú pháp: `/dung <số>`",
+                                    parse_mode=ParseMode.MARKDOWN)
         return
     i = int(c.args[0]) - 1
     tasks = TASKS.by_owner(u.effective_user.id)
     if 0 <= i < len(tasks):
         TASKS.remove(tasks[i].id)
-        await u.message.reply_text("✅ Đã dừng.")
+        await u.message.reply_text(f"✅ Đã dừng tác vụ số {i + 1}")
     else:
-        await u.message.reply_text("❌ Số không hợp lệ.")
+        await u.message.reply_text("❌ Số tác vụ không đúng.")
 
 
 @admin_only
-async def cmd_stop_all(u, c):
+async def cmd_dunghet(u, c):
     tasks = TASKS.by_owner(u.effective_user.id)
     for t in tasks:
         TASKS.remove(t.id)
-    await u.message.reply_text(f"✅ Dừng `{len(tasks)}` task.")
+    await u.message.reply_text(f"✅ Đã dừng tất cả `{len(tasks)}` tác vụ.",
+                                parse_mode=ParseMode.MARKDOWN)
 
 
 # ============================================================
-# POST INIT
+# KHỞI TẠO
 # ============================================================
 async def post_init(app):
-    print("[POST_INIT] Bắt đầu setup...")
+    print("[KHỞI TẠO] Bắt đầu cài đặt...")
 
     try:
         for a in VAULT.list_all("zalo"):
             POOL.add(a["imei"], a["cookies"], a["label"])
-        print(f"[POST_INIT] Loaded {POOL.size()} acc từ vault")
+        print(f"[KHỞI TẠO] Đã nạp {POOL.size()} tài khoản từ kho")
     except Exception as e:
-        print(f"[POST_INIT] Lỗi load vault: {e}")
+        print(f"[KHỞI TẠO] Lỗi nạp kho: {e}")
 
     try:
         cmds = [
             ("start", "Menu chính"),
-            ("zalo_qr", "QR login Zalo"),
-            ("add_acc", "Thêm acc vào pool"),
-            ("list_acc", "Xem pool"),
-            ("del_acc", "Xóa acc"),
-            ("vault", "Xem vault"),
-            ("acc_risk", "Risk của acc"),
-            ("zalo_rotate", "Spam Zalo rotate"),
-            ("zalo_nhay", "Treo nhây Zalo"),
-            ("zalo_tag", "Treo tag Zalo"),
-            ("zalo_ngon", "Treo ngôn Zalo"),
-            ("zalo_check", "Check Zalo"),
-            ("zalo_groups", "List nhóm Zalo"),
-            ("zalo_spam", "Spam Zalo 1 acc"),
-            ("zalo_color_list", "Bảng màu Zalo"),
-            ("fb_check", "Check FB"),
-            ("fb_send", "Gửi tin FB"),
-            ("fb_spam", "Spam FB"),
-            ("discord_spam", "Spam Discord"),
-            ("tele_spam", "Spam Telegram"),
-            ("gmail_spam", "Spam Gmail"),
-            ("sms_spam", "Spam SMS"),
-            ("ig_spam", "Spam IG"),
-            ("wechat_spam", "Spam WeChat"),
-            ("fw_status", "Firewall status"),
-            ("fw_reset", "Reset firewall"),
-            ("rate", "Rate config"),
-            ("cookie_fb", "Guide FB"),
-            ("cookie_zalo", "Guide Zalo"),
-            ("cookie_discord", "Guide Discord"),
-            ("nick", "Random nick"),
-            ("uid_extract", "Trích UID"),
-            ("ip_info", "Info IP"),
-            ("backup_all", "Backup all"),
-            ("tasks", "Tasks"),
-            ("stop", "Dừng task"),
-            ("stop_all", "Dừng hết"),
+            ("hd", "Hướng dẫn sử dụng"),
+            ("cookie", "Hướng dẫn lấy cookie"),
+            ("admin", "Thông tin Admin"),
+
+            ("qr", "Tạo mã QR đăng nhập Zalo"),
+            ("themacc", "Thêm tài khoản thủ công"),
+            ("ds", "Danh sách tài khoản"),
+            ("xoaacc", "Xóa tài khoản"),
+            ("kho", "Xem kho cookie"),
+            ("ruiro", "Xem rủi ro tài khoản"),
+
+            ("spam", "Spam đa tài khoản"),
+            ("nhay", "Treo nhây"),
+            ("tag", "Treo tag"),
+            ("ngon", "Treo ngôn"),
+
+            ("zkt", "Kiểm tra Zalo"),
+            ("znhom", "Danh sách nhóm Zalo"),
+            ("zspam", "Spam 1 tài khoản Zalo"),
+
+            ("fbkt", "Kiểm tra Facebook"),
+            ("fbgui", "Gửi tin Facebook"),
+            ("fbspam", "Spam Facebook"),
+
+            ("dspam", "Spam Discord"),
+            ("tspam", "Spam Telegram"),
+            ("gspam", "Spam Gmail"),
+            ("sms", "Spam SMS"),
+            ("igspam", "Spam Instagram"),
+            ("wcspam", "Spam WeChat"),
+
+            ("tuonglua", "Trạng thái tường lửa"),
+            ("reset", "Đặt lại tường lửa"),
+            ("nick", "Nick ngẫu nhiên"),
+            ("uid", "Trích UID từ văn bản"),
+            ("ip", "IP máy chủ"),
+
+            ("cv", "Danh sách tác vụ"),
+            ("dung", "Dừng 1 tác vụ"),
+            ("dunghet", "Dừng tất cả"),
         ]
         await app.bot.set_my_commands([BotCommand(n, d) for n, d in cmds])
-        print("[POST_INIT] Commands set OK")
+        print("[KHỞI TẠO] Đã đặt lệnh thành công")
     except Exception as e:
-        print(f"[POST_INIT] Lỗi: {e}")
+        print(f"[KHỞI TẠO] Lỗi: {e}")
 
-    print("[BOT] Ready. Bot by Anh Khôi.")
+    print("[BOT] Sẵn sàng. Bot được phát triển bởi Anh Khôi.")
 
 
-# ============================================================
-# MAIN
-# ============================================================
 def main():
     try:
         asyncio.get_event_loop()
@@ -2195,9 +2363,9 @@ def main():
             params={"drop_pending_updates": "true"},
             timeout=10,
         )
-        print(f"[MAIN] deleteWebhook: {r.status_code}")
+        print(f"[CHÍNH] Xóa webhook: {r.status_code}")
     except Exception as e:
-        print(f"[MAIN] Lỗi webhook: {e}")
+        print(f"[CHÍNH] Lỗi webhook: {e}")
 
     try:
         r = requests.get(
@@ -2206,12 +2374,12 @@ def main():
         data = r.json()
         if data.get("ok"):
             info = data["result"]
-            print(f"[MAIN] ✅ Bot: @{info.get('username')} (ID: {info.get('id')})")
+            print(f"[CHÍNH] ✅ Bot: @{info.get('username')} (ID: {info.get('id')})")
         else:
-            print(f"[MAIN] ❌ Token lỗi: {data}")
+            print(f"[CHÍNH] ❌ Token lỗi: {data}")
             return
     except Exception as e:
-        print(f"[MAIN] ❌ Verify lỗi: {e}")
+        print(f"[CHÍNH] ❌ Lỗi xác minh: {e}")
         return
 
     try:
@@ -2221,7 +2389,7 @@ def main():
             params={"drop_pending_updates": "true"},
             timeout=10,
         )
-        print("[MAIN] deleteWebhook lần 2: OK")
+        print("[CHÍNH] Xóa webhook lần 2: OK")
     except Exception:
         pass
 
@@ -2233,51 +2401,52 @@ def main():
         .build()
     )
 
+    # Đăng ký lệnh
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(cb_menu))
 
-    app.add_handler(CommandHandler("zalo_qr", cmd_zalo_qr))
-    app.add_handler(CommandHandler("add_acc", cmd_add_acc))
-    app.add_handler(CommandHandler("list_acc", cmd_list_acc))
-    app.add_handler(CommandHandler("del_acc", cmd_del_acc))
-    app.add_handler(CommandHandler("vault", cmd_vault))
-    app.add_handler(CommandHandler("acc_risk", cmd_acc_risk))
-    app.add_handler(CommandHandler("zalo_rotate", cmd_zalo_rotate))
-    app.add_handler(CommandHandler("zalo_nhay", cmd_zalo_nhay))
-    app.add_handler(CommandHandler("zalo_tag", cmd_zalo_tag))
-    app.add_handler(CommandHandler("zalo_ngon", cmd_zalo_ngon))
-    app.add_handler(CommandHandler("zalo_check", cmd_zalo_check))
-    app.add_handler(CommandHandler("zalo_groups", cmd_zalo_groups))
-    app.add_handler(CommandHandler("zalo_spam", cmd_zalo_spam))
-    app.add_handler(CommandHandler("zalo_color_list", cmd_zalo_color_list))
+    app.add_handler(CommandHandler("hd", cmd_hd))
+    app.add_handler(CommandHandler("cookie", cmd_cookie))
+    app.add_handler(CommandHandler("admin", cmd_admin))
 
-    app.add_handler(CommandHandler("fb_check", cmd_fb_check))
-    app.add_handler(CommandHandler("fb_send", cmd_fb_send))
-    app.add_handler(CommandHandler("fb_spam", cmd_fb_spam))
-    app.add_handler(CommandHandler("fb_threads", cmd_fb_threads))
+    app.add_handler(CommandHandler("qr", cmd_qr))
+    app.add_handler(CommandHandler("themacc", cmd_themacc))
+    app.add_handler(CommandHandler("ds", cmd_ds))
+    app.add_handler(CommandHandler("xoaacc", cmd_xoaacc))
+    app.add_handler(CommandHandler("kho", cmd_kho))
+    app.add_handler(CommandHandler("ruiro", cmd_ruiro))
 
-    app.add_handler(CommandHandler("discord_spam", cmd_discord_spam))
-    app.add_handler(CommandHandler("tele_spam", cmd_tele_spam))
-    app.add_handler(CommandHandler("gmail_spam", cmd_gmail_spam))
-    app.add_handler(CommandHandler("sms_spam", cmd_sms_spam))
-    app.add_handler(CommandHandler("ig_spam", cmd_ig_spam))
-    app.add_handler(CommandHandler("wechat_spam", cmd_wechat_spam))
+    app.add_handler(CommandHandler("spam", cmd_spam))
+    app.add_handler(CommandHandler("nhay", cmd_nhay))
+    app.add_handler(CommandHandler("tag", cmd_tag))
+    app.add_handler(CommandHandler("ngon", cmd_ngon))
 
-    app.add_handler(CommandHandler("fw_status", cmd_fw_status))
-    app.add_handler(CommandHandler("fw_reset", cmd_fw_reset))
-    app.add_handler(CommandHandler("rate", cmd_rate))
-    app.add_handler(CommandHandler("cookie_fb", cmd_cookie_fb))
-    app.add_handler(CommandHandler("cookie_zalo", cmd_cookie_zalo))
-    app.add_handler(CommandHandler("cookie_discord", cmd_cookie_discord))
+    app.add_handler(CommandHandler("zkt", cmd_zkt))
+    app.add_handler(CommandHandler("znhom", cmd_znhom))
+    app.add_handler(CommandHandler("zspam", cmd_zspam))
+
+    app.add_handler(CommandHandler("fbkt", cmd_fbkt))
+    app.add_handler(CommandHandler("fbgui", cmd_fbgui))
+    app.add_handler(CommandHandler("fbspam", cmd_fbspam))
+
+    app.add_handler(CommandHandler("dspam", cmd_dspam))
+    app.add_handler(CommandHandler("tspam", cmd_tspam))
+    app.add_handler(CommandHandler("gspam", cmd_gspam))
+    app.add_handler(CommandHandler("sms", cmd_sms))
+    app.add_handler(CommandHandler("igspam", cmd_igspam))
+    app.add_handler(CommandHandler("wcspam", cmd_wcspam))
+
+    app.add_handler(CommandHandler("tuonglua", cmd_tuonglua))
+    app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("nick", cmd_nick))
-    app.add_handler(CommandHandler("uid_extract", cmd_uid_extract))
-    app.add_handler(CommandHandler("ip_info", cmd_ip_info))
-    app.add_handler(CommandHandler("backup_all", cmd_backup_all))
-    app.add_handler(CommandHandler("tasks", cmd_tasks))
-    app.add_handler(CommandHandler("stop", cmd_stop))
-    app.add_handler(CommandHandler("stop_all", cmd_stop_all))
+    app.add_handler(CommandHandler("uid", cmd_uid))
+    app.add_handler(CommandHandler("ip", cmd_ip))
 
-    print("[ALB] Bot by Anh Khôi — starting v8.1...")
+    app.add_handler(CommandHandler("cv", cmd_cv))
+    app.add_handler(CommandHandler("dung", cmd_dung))
+    app.add_handler(CommandHandler("dunghet", cmd_dunghet))
+
+    print("[BOT] Bắt đầu chạy...")
     app.run_polling(
         drop_pending_updates=True,
         poll_interval=0.3,
