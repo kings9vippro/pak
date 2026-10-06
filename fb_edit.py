@@ -1,4 +1,11 @@
-import json, time, random
+# ============================================================
+# fb_edit.py — Chỉnh đồ Facebook (profile, avatar, story...)
+# Tất cả dùng GraphQL với token từ TOKEN_GRABBER
+# ============================================================
+import json
+import time
+import random
+
 from firewall_v7 import FW
 from fb_token import TOKEN_GRABBER
 
@@ -10,13 +17,16 @@ class FBEdit:
     def _headers(self, cookie):
         return {
             "Cookie": cookie,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/122.0.0.0 Safari/537.36"),
             "Content-Type": "application/x-www-form-urlencoded",
             "Origin": "https://www.facebook.com",
             "Referer": "https://www.facebook.com/",
         }
 
     def _graphql(self, cookie, friendly, variables, doc_id):
+        """Gửi GraphQL mutation."""
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
             return None
@@ -49,6 +59,7 @@ class FBEdit:
         except Exception:
             return {"_raw": r.text[:300]}
 
+    # ---------- Đổi BIO ----------
     def set_bio(self, cookie, text):
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
@@ -62,6 +73,7 @@ class FBEdit:
             }
         }, "6766531750937525")
 
+    # ---------- Đổi TÊN ----------
     def set_name(self, cookie, first, middle, last, password=""):
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
@@ -77,6 +89,7 @@ class FBEdit:
             }
         }, "6205262395697366")
 
+    # ---------- Đăng STORY ----------
     def set_story(self, cookie, text="", photo_id=None):
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
@@ -100,6 +113,7 @@ class FBEdit:
             }
         }, "7679274433406034")
 
+    # ---------- Đổi AVATAR ----------
     def set_avatar(self, cookie, image_url=None, image_bytes=None):
         pid = self._upload_photo(cookie, image_url, image_bytes)
         if not pid:
@@ -113,6 +127,7 @@ class FBEdit:
             }
         }, "1696467079100051")
 
+    # ---------- Đổi COVER ----------
     def set_cover(self, cookie, image_url=None, image_bytes=None):
         pid = self._upload_photo(cookie, image_url, image_bytes)
         if not pid:
@@ -127,6 +142,7 @@ class FBEdit:
             }
         }, "8431558881232338")
 
+    # ---------- Đổi THEME MESS ----------
     def set_theme(self, cookie, thread_id, theme_id):
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
@@ -140,6 +156,7 @@ class FBEdit:
             }
         }, "6118370971053421")
 
+    # ---------- Đổi EMOJI MESS ----------
     def set_emoji(self, cookie, thread_id, emoji):
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
@@ -155,6 +172,7 @@ class FBEdit:
             }
         }, "6767568687480178")
 
+    # ---------- Đặt NICKNAME trong nhóm ----------
     def set_nickname(self, cookie, thread_id, user_id, nickname):
         tok = TOKEN_GRABBER.grab(cookie)
         if not tok:
@@ -169,6 +187,7 @@ class FBEdit:
             }
         }, "2775574761710307")
 
+    # ---------- Upload ảnh lấy ID ----------
     def _upload_photo(self, cookie, image_url=None, image_bytes=None):
         import requests as _r
         if image_url and not image_bytes:
