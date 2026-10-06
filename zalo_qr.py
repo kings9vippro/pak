@@ -1,9 +1,15 @@
-import time, json, base64, random, threading, hashlib
+# ============================================================
+# zalo_qr.py — Zalo QR login (120s)
+# ============================================================
+import time
+import random
+import hashlib
 from io import BytesIO
+
 import requests
 import qrcode
 
-QR_TTL = 120
+QR_TTL = 120  # giây
 
 
 class ZaloQRLogin:
@@ -12,7 +18,9 @@ class ZaloQRLogin:
     def __init__(self):
         self.s = requests.Session()
         self.s.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/122.0.0.0 Safari/537.36"),
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
             "Origin": "https://id.zalo.me",
@@ -25,6 +33,7 @@ class ZaloQRLogin:
         return hashlib.md5(str(random.random()).encode()).hexdigest()
 
     def create_qr(self):
+        """Tạo QR code."""
         qr_id = hashlib.md5(f"{time.time()}{random.random()}".encode()).hexdigest()
         exp = int(time.time()) + QR_TTL
         qr_content = f"zalologin://token={qr_id}&exp={exp}"
@@ -41,6 +50,7 @@ class ZaloQRLogin:
         }
 
     def poll_login(self, qr_id, on_status=None, stop_event=None):
+        """Poll cho đến khi user quét QR."""
         start = time.time()
         while time.time() - start < QR_TTL:
             if stop_event and stop_event.is_set():
@@ -64,6 +74,7 @@ class ZaloQRLogin:
         return {"error": "Timeout"}
 
     def _finalize(self, qr_id):
+        """Sau khi user quét, lấy cookie."""
         try:
             imei = self._device_id()
             r = self.s.post(f"{self.BASE}/account/qr/login",
