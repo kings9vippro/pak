@@ -1,16 +1,17 @@
-"""
-COOKIE GUARD v3.0 — BẢO VỆ COOKIE KHÔNG DIE
-- Backup tự động khi thêm
-- Warm định kỳ 30 phút
-- Health check per-cookie
-- Auto-disable khi fail cao
-- Fingerprint consistency
-- Rate limit per-cookie (min 3s)
-"""
-import os, json, time, threading, hashlib
+# ============================================================
+# cookie_guard_v3.py — Bảo vệ cookie không die
+# - Backup ra file .bak
+# - Warm định kỳ 30 phút
+# - Health check per-cookie
+# ============================================================
+import os
+import time
+import threading
+import hashlib
+import random
 from typing import Optional
 
-DATA_DIR = "data"
+DATA_DIR = os.environ.get("DATA_DIR", "/tmp/alb_data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
@@ -24,9 +25,10 @@ class CookieGuardV3:
     def _hash(c: str) -> str:
         return hashlib.md5(c.encode()).hexdigest()[:12]
 
-    # ---------- backup ----------
+    # ---------- Backup ----------
     @staticmethod
     def backup(cookie: str, tag: str = "fb") -> str:
+        """Lưu cookie ra file .bak."""
         h = CookieGuardV3._hash(cookie)
         p = os.path.join(DATA_DIR, f"{tag}_{h}.bak")
         with open(p, "w") as f:
@@ -49,9 +51,10 @@ class CookieGuardV3:
                 out.append(os.path.join(DATA_DIR, f))
         return out
 
-    # ---------- warm ----------
+    # ---------- Warm ----------
     @staticmethod
     def warm_fb(cookie: str):
+        """Truy cập vài trang FB nhẹ để giữ session sống."""
         from firewall_v7 import FW
         fw = FW["fb"]
         urls = [
@@ -59,23 +62,16 @@ class CookieGuardV3:
             "https://www.facebook.com/messages/t/",
             "https://www.facebook.com/notifications",
         ]
-        import random as _r
         try:
             for u in urls:
                 fw.get(u, headers={"Cookie": cookie}, timeout=15)
-                time.sleep(_r.uniform(2.0, 4.5))
-        except Exception:
-            pass
-
-    @staticmethod
-    def warm_zalo(zalo_app):
-        try:
-            zalo_app.groups()
+                time.sleep(random.uniform(2.0, 4.5))
         except Exception:
             pass
 
     def start_warm_loop(self, cookie: str, tag: str, interval: int,
                         stop_event: threading.Event):
+        """Chạy warm định kỳ trong thread riêng."""
         h = self._hash(cookie)
         with self.lock:
             if h in self.warm_threads and self.warm_threads[h].is_alive():
@@ -98,7 +94,7 @@ class CookieGuardV3:
             self.warm_threads[h] = t
             t.start()
 
-    # ---------- health ----------
+    # ---------- Health ----------
     def record(self, cookie: str, ok: bool):
         h = self._hash(cookie)
         with self.lock:
@@ -110,6 +106,7 @@ class CookieGuardV3:
             d["last"] = time.time()
 
     def health_percent(self, cookie: str) -> float:
+        """Tỉ lệ thành công %."""
         h = self._hash(cookie)
         with self.lock:
             d = self.health.get(h, {"ok": 0, "fail": 0, "last": 0})
@@ -119,6 +116,7 @@ class CookieGuardV3:
             return (d["ok"] / total) * 100.0
 
     def is_safe(self, cookie: str) -> bool:
+        """Cookie có an toàn không (ok > 40%)."""
         h = self._hash(cookie)
         with self.lock:
             d = self.health.get(h, {"ok": 0, "fail": 0, "last": 0})
