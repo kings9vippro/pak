@@ -1,14 +1,15 @@
 # ============================================================
-# BOT BY ANH KHÔI — ALB FORGE v8.0
+# BOT BY ANH KHÔI — ALB FORGE v8.1
 # Telegram: 8845944331:AAEN9CM-mui0Ga_HFENi9I52EcxsWtgg8Sk
 # Admin: 6094686933
-# Full all-in-one: Zalo QR + Rotate acc + Nhây + Anti-ban v4
+# All-in-one: Zalo QR + Rotate acc + Nhây + Anti-ban v4
+# Đã fix lỗi Playwright Chromium path
 # ============================================================
 
 # ============ IMPORTS ============
 import os
-import re
 import sys
+import re
 import json
 import time
 import random
@@ -18,6 +19,7 @@ import warnings
 import hashlib
 import base64
 import string
+import subprocess
 from io import BytesIO
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -60,7 +62,7 @@ MIN_SAFE_DELAY = 3.0
 
 
 # ============================================================
-# HTTP SERVER GIẢ — Render Free không kill worker
+# HTTP SERVER GIẢ — Giữ Render Free không kill worker
 # ============================================================
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -303,7 +305,6 @@ class MultiCircuit:
     def __init__(self):
         self.results = deque(maxlen=25)
         self.opened_at = None
-        self.tier = 0
 
     def record(self, ok):
         self.results.append(ok)
@@ -550,7 +551,7 @@ ANTIBAN4 = AntiBanV4()
 
 
 # ============================================================
-# ACCOUNT POOL — Rotate không trùng
+# ACCOUNT POOL
 # ============================================================
 class AccountPool:
     def __init__(self):
@@ -675,7 +676,7 @@ VAULT = CookieVault()
 
 
 # ============================================================
-# ZALO TOOLS (AES + send)
+# ZALO TOOLS
 # ============================================================
 ZALO_TEXT_COLORS = [
     {"name": "Đỏ", "code": "red"},
@@ -800,7 +801,7 @@ class Zalo:
 
 
 # ============================================================
-# ZALO QR LOGIN — Playwright
+# ZALO QR — Playwright (auto-install Chromium nếu thiếu)
 # ============================================================
 class ZaloQRLogin:
     def __init__(self):
@@ -809,19 +810,66 @@ class ZaloQRLogin:
         self.playwright = None
 
     async def _start(self):
-        from playwright.async_api import async_playwright
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage",
-                  "--disable-gpu", "--disable-blink-features=AutomationControlled",
-                  "--window-size=600,800"],
-        )
+        # --- Đảm bảo có playwright ---
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            print("[QR] Playwright chưa cài → pip install...")
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "playwright"],
+                check=True,
+            )
+            from playwright.async_api import async_playwright
+
+        # --- Thử launch, nếu thiếu Chromium thì cài rồi thử lại ---
+        last_err = None
+        for attempt in range(2):
+            try:
+                self.playwright = await async_playwright().start()
+                self.browser = await self.playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-blink-features=AutomationControlled",
+                        "--window-size=600,800",
+                    ],
+                )
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if "Executable doesn't exist" in err_str and attempt == 0:
+                    print("[QR] Chromium chưa có → tự cài...")
+                    try:
+                        subprocess.run(
+                            [sys.executable, "-m", "playwright", "install", "chromium"],
+                            timeout=300,
+                            check=True,
+                        )
+                        print("[QR] Đã cài Chromium xong, thử lại...")
+                    except Exception as e2:
+                        print(f"[QR] Không cài được: {e2}")
+                    try:
+                        if self.playwright:
+                            await self.playwright.stop()
+                    except Exception:
+                        pass
+                    continue
+                raise
+
+        if last_err:
+            raise last_err
+
         ctx = await self.browser.new_context(
             viewport={"width": 600, "height": 800},
-            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/122.0.0.0 Safari/537.36"),
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
             locale="vi-VN",
         )
         self.page = await ctx.new_page()
@@ -1011,7 +1059,7 @@ class Facebook:
 
 
 # ============================================================
-# ZALO SPAM ROTATE (1s/acc, không trùng)
+# ZALO ROTATE SPAM
 # ============================================================
 class ZaloRotateSpam:
     def __init__(self, targets, messages, min_gap=1.0, use_color=True):
@@ -1167,11 +1215,6 @@ Gửi bot:
 """
 
 COOKIE_DISCORD = "🎮 Discord: F12 → Console → lấy token"
-COOKIE_TELEGRAM = "📢 @BotFather (token) + @userinfobot (chat_id)"
-COOKIE_GMAIL = "✉ myaccount.google.com/apppasswords → App Password"
-COOKIE_IG = "📷 Kiwi → instagram.com → Cookie Editor → sessionid"
-COOKIE_WECHAT = "💼 work.weixin.qq.com → Corp ID + Agent + Secret"
-COOKIE_SMS = "📲 Chỉ cần số điện thoại"
 
 
 # ============================================================
@@ -1199,7 +1242,6 @@ MAIN_KB = [
 MENU_TEXT = {
     "m_fb": ("📘 *Facebook*\n\n"
              "`/fb_check <cookie>`\n"
-             "`/fb_threads <cookie>`\n"
              "`/fb_send <cookie>|<box>|<msg>`\n"
              "`/fb_spam <cookie>|<box1,box2>|<msg1;msg2>|<delay>`"),
     "m_zalo": ("📞 *Zalo*\n\n"
@@ -1208,10 +1250,10 @@ MENU_TEXT = {
                "`/zalo_groups <imei>|<cookie>`\n"
                "`/zalo_spam <imei>|<cookie>|<gid>|<msg>|<delay>`"),
     "m_rotate": ("🎯 *Rotate đa acc*\n\n"
-                 "`/add_acc <imei>|<cookie_json>|<label>` — thêm acc\n"
-                 "`/list_acc` — xem pool\n"
+                 "`/add_acc <imei>|<cookie_json>|<label>`\n"
+                 "`/list_acc`\n"
                  "`/zalo_rotate <gid1,gid2>|<msg1;msg2>|<min_gap>`\n"
-                 "_Mỗi 1s đổi acc luân phiên không trùng_"),
+                 "_Mỗi 1s đổi acc luân phiên — không trùng_"),
     "m_nhay": ("🎭 *Treo nhây*\n\n"
                "`/zalo_nhay <gid1,gid2>|<msg1;msg2>|<gap>`\n"
                "`/zalo_tag <gid>|<msg>|<tag_user>|<gap>`\n"
@@ -1224,11 +1266,11 @@ MENU_TEXT = {
     "m_discord": "🎮 `/discord_spam <token>|<channel>|<msg1;msg2>|<delay>`",
     "m_telegram": "📢 `/tele_spam <token>|<chat>|<msg1;msg2>|<delay>`",
     "m_gmail": "✉ `/gmail_spam <email>|<pass>|<to>|<msg1;msg2>|<delay>`",
-    "m_sms": "📲 `/sms_spam <phone>` — spam OTP qua Zalo",
+    "m_sms": "📲 `/sms_spam <phone>`",
     "m_ig": "📷 `/ig_spam <sessionid>|<thread_ids>|<msg1;msg2>|<delay>`",
     "m_wechat": "💼 `/wechat_spam <corpid>|<secret>|<agent>|<user>|<msgs>|<delay>`",
     "m_fw": "🛡 `/fw_status` `/fw_reset`",
-    "m_rate": f"⚙ `/rate` `/rate_set <key> <giây>` (min {MIN_SAFE_DELAY}s)",
+    "m_rate": f"⚙ Delay min {MIN_SAFE_DELAY}s. Dùng /rate để xem.",
     "m_guide": "📖 `/cookie_fb` `/cookie_zalo` `/cookie_discord`",
     "m_cool": "🔥 `/nick` `/uid_extract` `/ip_info` `/backup_all`",
     "m_tasks": "📋 `/tasks` `/stop <n>` `/stop_all`",
@@ -1253,7 +1295,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Không có quyền.")
         return
     await update.message.reply_text(
-        "🔥 *ALB FORGE v8.0*\n"
+        "🔥 *ALB FORGE v8.1*\n"
         "_Bot by Anh Khôi_\n"
         f"_Pool: {POOL.size()} acc_\n\n"
         "Chọn chức năng:",
@@ -1284,7 +1326,7 @@ async def cb_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 @admin_only
 async def cmd_zalo_qr(update, ctx):
-    await update.message.reply_text("⏳ Đang khởi động browser... (5-10s)")
+    await update.message.reply_text("⏳ Đang khởi động browser... (5-15s lần đầu)")
 
     qr = ZaloQRLogin()
     try:
@@ -1340,20 +1382,18 @@ async def cmd_zalo_qr(update, ctx):
     uid = cookies.get("zalo_u_id") or imei
     label = f"acc{POOL.size() + 1}"
 
-    # Lưu vào vault + pool
     VAULT.add(uid, imei, cookies, label, "zalo")
     POOL.add(imei, cookies, label)
 
     cookie_str = json.dumps(cookies, indent=2, ensure_ascii=False)
     await update.message.reply_text(
         f"✅ *ĐĂNG NHẬP ZALO THÀNH CÔNG!*\n\n"
-        f"🏷 *Label:* `{label}`\n"
-        f"🆔 *IMEI:* `{imei}`\n"
-        f"👤 *UID:* `{uid}`\n\n"
-        f"🍪 *Cookie:*\n"
-        f"{cookie_str}\n\n"
-        f"📊 Pool hiện tại: *{POOL.size()} acc*\n"
-        f"Dùng `/zalo_rotate` để bắt đầu spam."
+        f"🏷 Label: `{label}`\n"
+        f"🆔 IMEI: `{imei}`\n"
+        f"👤 UID: `{uid}`\n\n"
+        f"🍪 Cookie:\n{cookie_str}\n\n"
+        f"📊 Pool: *{POOL.size()} acc*\n"
+        f"Dùng `/zalo_rotate` để bắt đầu."
     )
 
 
@@ -1711,10 +1751,8 @@ async def cmd_fb_spam(u, c):
 
 @admin_only
 async def cmd_fb_threads(u, c):
-    # Placeholder đơn giản — không có token grabber trong bản gọn này
     await u.message.reply_text(
-        "ℹ️ Dùng /fb_send trực tiếp với box ID. "
-        "Để list box, dùng công cụ khác."
+        "ℹ️ Dùng /fb_send trực tiếp với box ID."
     )
 
 
@@ -1833,12 +1871,8 @@ async def cmd_gmail_spam(u, c):
 
 @admin_only
 async def cmd_sms_spam(u, c):
-    """Spam SMS — dùng pool acc Zalo để gửi."""
     if not c.args:
-        await u.message.reply_text(
-            "Cú pháp: /sms_spam <phone>\n"
-            "Spam OTP qua pool acc Zalo."
-        )
+        await u.message.reply_text("Cú pháp: /sms_spam <phone>")
         return
     phone = c.args[0].strip()
     if POOL.size() == 0:
@@ -1848,7 +1882,6 @@ async def cmd_sms_spam(u, c):
     task = Task(new_tid("sms"), "sms", u.effective_user.id)
 
     def w():
-        i = 0
         while not task.stop.is_set():
             acc = POOL.next_account(min_gap=1.0)
             if not acc:
@@ -1856,13 +1889,8 @@ async def cmd_sms_spam(u, c):
                 continue
             try:
                 z = Zalo(acc["imei"], acc["cookies"])
-                # Gửi tin "OTP" qua Zalo tới số phone (nếu có)
-                # Fallback: gửi tin spam
                 msg = f"OTP: {random.randint(100000, 999999)}"
-                # Gửi tới chính mình trong nhóm demo (thay target)
-                # Trong thực tế bạn cần API SMS gateway
                 print(f"[sms] {acc['label']} → {phone}: {msg}")
-                i += 1
             except Exception as e:
                 print(f"[sms] {e}")
             time.sleep(5)
@@ -1967,7 +1995,7 @@ async def cmd_wechat_spam(u, c):
 
 
 # ============================================================
-# HANDLERS - FW / RATE / GUIDE / COOL / TASKS
+# HANDLERS - SYSTEM
 # ============================================================
 @admin_only
 async def cmd_fw_status(u, c):
@@ -1993,7 +2021,7 @@ async def cmd_rate(u, c):
         f"• Pool: `{POOL.size()}` acc\n"
         f"• FB base: `{FW['fb'].BASE_DELAY}s`\n"
         f"• Zalo base: `{FW['zalo'].BASE_DELAY}s`\n\n"
-        f"Delay được điều chỉnh tự động theo risk từng acc.",
+        f"Delay tự động theo risk từng acc.",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -2094,7 +2122,6 @@ async def cmd_stop_all(u, c):
 async def post_init(app):
     print("[POST_INIT] Bắt đầu setup...")
 
-    # Load vault → pool
     try:
         for a in VAULT.list_all("zalo"):
             POOL.add(a["imei"], a["cookies"], a["label"])
@@ -2102,7 +2129,6 @@ async def post_init(app):
     except Exception as e:
         print(f"[POST_INIT] Lỗi load vault: {e}")
 
-    # Set commands
     try:
         cmds = [
             ("start", "Menu chính"),
@@ -2123,7 +2149,6 @@ async def post_init(app):
             ("fb_check", "Check FB"),
             ("fb_send", "Gửi tin FB"),
             ("fb_spam", "Spam FB"),
-            ("fb_threads", "Box FB"),
             ("discord_spam", "Spam Discord"),
             ("tele_spam", "Spam Telegram"),
             ("gmail_spam", "Spam Gmail"),
@@ -2161,11 +2186,9 @@ def main():
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
-    # HTTP server giả
     threading.Thread(target=_start_health_server, daemon=True).start()
     time.sleep(0.5)
 
-    # Xóa webhook lần 1
     try:
         r = requests.get(
             f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",
@@ -2176,7 +2199,6 @@ def main():
     except Exception as e:
         print(f"[MAIN] Lỗi webhook: {e}")
 
-    # Verify token
     try:
         r = requests.get(
             f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=10
@@ -2192,7 +2214,6 @@ def main():
         print(f"[MAIN] ❌ Verify lỗi: {e}")
         return
 
-    # Xóa webhook lần 2
     try:
         time.sleep(2)
         requests.get(
@@ -2204,7 +2225,6 @@ def main():
     except Exception:
         pass
 
-    # Build app
     app = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -2213,11 +2233,9 @@ def main():
         .build()
     )
 
-    # Đăng ký handlers
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(cb_menu))
 
-    # Zalo
     app.add_handler(CommandHandler("zalo_qr", cmd_zalo_qr))
     app.add_handler(CommandHandler("add_acc", cmd_add_acc))
     app.add_handler(CommandHandler("list_acc", cmd_list_acc))
@@ -2233,13 +2251,11 @@ def main():
     app.add_handler(CommandHandler("zalo_spam", cmd_zalo_spam))
     app.add_handler(CommandHandler("zalo_color_list", cmd_zalo_color_list))
 
-    # Facebook
     app.add_handler(CommandHandler("fb_check", cmd_fb_check))
     app.add_handler(CommandHandler("fb_send", cmd_fb_send))
     app.add_handler(CommandHandler("fb_spam", cmd_fb_spam))
     app.add_handler(CommandHandler("fb_threads", cmd_fb_threads))
 
-    # Others
     app.add_handler(CommandHandler("discord_spam", cmd_discord_spam))
     app.add_handler(CommandHandler("tele_spam", cmd_tele_spam))
     app.add_handler(CommandHandler("gmail_spam", cmd_gmail_spam))
@@ -2247,7 +2263,6 @@ def main():
     app.add_handler(CommandHandler("ig_spam", cmd_ig_spam))
     app.add_handler(CommandHandler("wechat_spam", cmd_wechat_spam))
 
-    # System
     app.add_handler(CommandHandler("fw_status", cmd_fw_status))
     app.add_handler(CommandHandler("fw_reset", cmd_fw_reset))
     app.add_handler(CommandHandler("rate", cmd_rate))
@@ -2262,7 +2277,7 @@ def main():
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("stop_all", cmd_stop_all))
 
-    print("[ALB] Bot by Anh Khôi — starting v8.0...")
+    print("[ALB] Bot by Anh Khôi — starting v8.1...")
     app.run_polling(
         drop_pending_updates=True,
         poll_interval=0.3,
