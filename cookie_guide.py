@@ -1,5 +1,6 @@
 # ============================================================
-# COOKIE GUIDE — Bot by Anh Khôi
+# cookie_guide.py — Hướng dẫn lấy cookie các app
+# KHÔNG dùng backtick 3 lần bên trong string để tránh lỗi syntax
 # ============================================================
 
 COOKIE_FB = """📘 LẤY COOKIE FACEBOOK
@@ -7,7 +8,7 @@ COOKIE_FB = """📘 LẤY COOKIE FACEBOOK
 Cần: c_user, xs, datr, fr, sb, presence
 
 Cách 1 — Kiwi Browser (điện thoại):
-1. Cài Kiwi Browser + extension "Cookie Editor"
+1. Cài Kiwi Browser + extension Cookie Editor
 2. Mở facebook.com → đăng nhập
 3. Mở extension → Export → Copy JSON
 
@@ -20,7 +21,7 @@ Cách 2 — HTTP Canary (Android):
 Cách 3 — PC:
 1. F12 → tab Network → F5
 2. Chọn request đầu tiên
-3. Request Headers → cookie: → copy
+3. Request Headers → cookie → copy
 
 Test: /fb_check <cookie>
 """
@@ -43,7 +44,7 @@ IMEI:
 - Hoặc dùng mặc định: 000000000000000
 
 Định dạng gửi bot:
-/zalo_check <imei>|{"zpw_sek":"...","zpw_ver":"645","zpw_type":"30"}
+/zalo_check <imei>|<cookie_json>
 """
 
 
@@ -51,12 +52,11 @@ COOKIE_DISCORD = """🎮 LẤY TOKEN DISCORD
 
 PC:
 1. Mở discord.com → F12 → Console
-2. Paste đoạn code:
-(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()
+2. Paste đoạn script lấy token
 3. Copy token (dạng MTIz...)
 
 Mobile:
-Dùng Kiwi Browser + extension "Discord Token Login"
+Dùng Kiwi Browser + extension Discord Token Login
 """
 
 
@@ -77,7 +77,7 @@ COOKIE_GMAIL = """✉ LẤY GMAIL APP PASSWORD
 
 1. Bật 2FA: myaccount.google.com/security
 2. Vào myaccount.google.com/apppasswords
-3. Chọn Mail → Other → đặt tên "Bot"
+3. Chọn Mail → Other → đặt tên Bot
 4. Copy 16 ký tự app password
 
 Dùng cho lệnh:
