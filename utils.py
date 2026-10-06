@@ -5,10 +5,14 @@ try:
     from fake_useragent import UserAgent
     _UA = UserAgent()
     def random_ua():
-        try: return _UA.random
-        except: return _fallback_ua()
+        try:
+            return _UA.random
+        except Exception:
+            return _fallback_ua()
 except Exception:
-    def random_ua(): return _fallback_ua()
+    def random_ua():
+        return _fallback_ua()
+
 
 def _fallback_ua():
     uas = [
@@ -20,11 +24,13 @@ def _fallback_ua():
     ]
     return random.choice(uas)
 
+
 def get_uptime(start: datetime) -> str:
     e = (datetime.now() - start).total_seconds()
     h, r = divmod(int(e), 3600)
     m, s = divmod(r, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
+
 
 def parse_cookie_string(s: str) -> dict:
     out = {}
@@ -34,25 +40,33 @@ def parse_cookie_string(s: str) -> dict:
             out[k] = v
     return out
 
+
 def cookie_to_string(d: dict) -> str:
     return "; ".join(f"{k}={v}" for k, v in d.items())
+
 
 def gen_device_id() -> str:
     return hashlib.md5(str(random.random()).encode()).hexdigest()[:16]
 
+
 def gen_imei() -> str:
     return "".join(random.choices(string.digits, k=15))
+
 
 def jitter(base: float, f: float = 0.4) -> float:
     return base * random.uniform(1 - f, 1 + f)
 
+
 def now_ms() -> int:
     return int(time.time() * 1000)
+
 
 def safe_get(d, *keys, default=None):
     cur = d
     for k in keys:
-        if not isinstance(cur, dict): return default
+        if not isinstance(cur, dict):
+            return default
         cur = cur.get(k)
-        if cur is None: return default
+        if cur is None:
+            return default
     return cur
