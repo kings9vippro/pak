@@ -1,10 +1,23 @@
-import json, time, base64, random
+# ============================================================
+# zalo_tools.py — Tools Zalo
+# - login bằng IMEI + cookie
+# - list groups
+# - send message + set typing
+# - spam loop có auto đổi màu chữ mỗi dòng
+# ============================================================
+import json
+import time
+import base64
+import random
+
 import requests
 from Crypto.Cipher import AES
+
 from firewall_v7 import FW
 from anti_ban_v3 import ANTIBAN
 from cookie_guard_v3 import GUARD3
 
+# ----- Bảng màu chữ Zalo -----
 ZALO_TEXT_COLORS = [
     {"name": "Đỏ", "code": "red"},
     {"name": "Hồng", "code": "pink"},
@@ -40,10 +53,13 @@ class Zalo:
         self._login()
 
     def _login(self):
+        """Login bằng getLoginInfo."""
         r = self.s.get(
             "https://wpa.chat.zalo.me/api/login/getLoginInfo",
-            params={"imei": self.imei, "type": 30,
-                    "client_version": 645, "ts": int(time.time() * 1000)},
+            params={
+                "imei": self.imei, "type": 30,
+                "client_version": 645, "ts": int(time.time() * 1000),
+            },
             timeout=20,
         )
         d = r.json()
@@ -56,6 +72,7 @@ class Zalo:
             raise Exception("Không lấy được secret_key")
 
     def _enc(self, params):
+        """Mã hóa params với AES."""
         key = base64.b64decode(self.secret_key)
         cipher = AES.new(key, AES.MODE_CBC, bytes(16))
         pt = json.dumps(params).encode()
@@ -64,12 +81,14 @@ class Zalo:
         return base64.b64encode(cipher.encrypt(pt)).decode()
 
     def _dec(self, enc):
+        """Giải mã response."""
         key = base64.b64decode(self.secret_key)
         cipher = AES.new(key, AES.MODE_CBC, bytes(16))
         d = cipher.decrypt(base64.b64decode(enc))
         return d[:-d[-1]].decode("utf-8", "ignore")
 
     def groups(self):
+        """Lấy danh sách nhóm."""
         r = self.s.get(
             "https://tt-group-wpa.chat.zalo.me/api/group/getlg/v4",
             params={"zpw_ver": 645, "zpw_type": 30}, timeout=20,
@@ -94,6 +113,7 @@ class Zalo:
         return {"name": info.get("name", "?"), "totalMember": info.get("totalMember", "?")}
 
     def send(self, msg, thread_id, is_group=True, color=None):
+        """Gửi tin nhắn, có thể chỉ định màu chữ."""
         url = ("https://tt-group-wpa.chat.zalo.me/api/group/sendmsg"
                if is_group
                else "https://tt-chat2-wpa.chat.zalo.me/api/message/sms")
@@ -114,6 +134,7 @@ class Zalo:
                            data={"params": enc}, timeout=20)
 
     def set_typing(self, thread_id, is_group=True):
+        """Set trạng thái đang gõ."""
         if is_group:
             url = "https://tt-group-wpa.chat.zalo.me/api/group/typing"
             pl = {"grid": str(thread_id), "imei": self.imei}
@@ -129,7 +150,7 @@ class Zalo:
 
     def spam_loop_colored(self, targets, messages, delay, is_group,
                           stop_event, colors=None, on_log=None):
-        """Xả tin + auto đổi màu. Min 3s + anti-ban."""
+        """Spam loop auto đổi màu chữ mỗi dòng."""
         user_delay = max(3.0, float(delay))
         color_codes = [c["code"] for c in (colors or ZALO_TEXT_COLORS)]
         i = 0
@@ -145,11 +166,13 @@ class Zalo:
                 color = color_codes[color_idx % len(color_codes)]
                 color_idx += 1
 
+                # Behavior
                 self.fw.behavior.pre_send()
                 msg_h = self.fw.behavior.humanize(msg)
                 msg_h = self.fw.behavior.entropy_mask(
                     self.fw.behavior.vary(
                         self.fw.behavior.typo(msg_h)))
+
                 try:
                     self.set_typing(tid, is_group)
                     time.sleep(min(self.fw.behavior.typing(msg_h), 4.0))
@@ -166,6 +189,7 @@ class Zalo:
                     if on_log:
                         on_log(f"⚠️ {tid}: {e}")
 
+                # Delay min 3s
                 actual = max(3.0, user_delay * random.uniform(0.9, 1.35))
                 if consecutive_ok > 5 and user_delay > 3.0:
                     actual = max(3.0, user_delay * random.uniform(0.75, 1.0))
@@ -183,5 +207,6 @@ class Zalo:
                 self.fw.behavior.maybe_break()
 
     def spam_loop(self, targets, messages, delay, is_group, stop_event, on_log=None):
+        """Spam loop không đổi màu."""
         self.spam_loop_colored(targets, messages, delay, is_group,
                                stop_event, colors=[{"code": None}], on_log=on_log)
