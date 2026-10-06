@@ -1,25 +1,29 @@
-"""
-FIREWALL v7.0 — ELITE ANTI-BAN FOR FB + ZALO
-7 lớp bảo vệ:
-L1: Request Shaper (Chrome header order, TLS 1.3, HTTP/2 hint)
-L2: Fingerprint Pool (giữ ổn định per-cookie, rotate giữa cookie)
-L3: Behavior Engine (typing rhythm, reading, break, entropy mask)
-L4: Rate Balancer (min 3s, adaptive 3s → 120s)
-L5: Multi-Tier Circuit Breaker (60s → 300s → 900s)
-L6: Cookie Guardian (per-cookie rate + warm + backup)
-L7: Anomaly & Auto-Escape (latency/status, tự dừng task)
-"""
-import time, random, threading, hashlib, ssl
+# ============================================================
+# firewall_v7.py — 7 LỚP TƯỜNG LỬA ANTI-BAN
+# L1: Request Shaper — sắp header theo thứ tự Chrome
+# L2: Fingerprint Pool — giữ fingerprint ổn định per-cookie
+# L3: Behavior Engine — typing rhythm, reading, break
+# L4: Rate Balancer — min 3s, adaptive 3-120s
+# L5: Multi-Tier Circuit Breaker — 3 tầng cooldown
+# L6: Cookie Guard Base — rate limit riêng từng cookie
+# L7: Anomaly Detector — phát hiện latency/status bất thường
+# ============================================================
+import time
+import random
+import threading
+import hashlib
 from collections import deque
 from typing import Optional
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from utils import random_ua, jitter
+
+from utils import jitter
 
 
 # ============================================================
-# L1 — REQUEST SHAPER
+# L1 — REQUEST SHAPER: sắp header đúng thứ tự Chrome
 # ============================================================
 class RequestShaper:
     HEADER_ORDER = [
@@ -33,6 +37,7 @@ class RequestShaper:
     ]
 
     def shape(self, headers: dict) -> dict:
+        """Sắp lại header theo thứ tự Chrome để tránh bị detect."""
         out = {}
         for k in self.HEADER_ORDER:
             if k in headers:
@@ -44,7 +49,7 @@ class RequestShaper:
 
 
 # ============================================================
-# L2 — FINGERPRINT POOL
+# L2 — FINGERPRINT POOL: 9 platform, giữ ổn định per-cookie
 # ============================================================
 class FingerprintPool:
     PLAT = [
@@ -66,16 +71,19 @@ class FingerprintPool:
     TZ = ["Asia/Ho_Chi_Minh", "Asia/Bangkok", "Asia/Singapore"]
 
     def _gen(self) -> dict:
+        """Sinh 1 fingerprint ngẫu nhiên."""
         p, mobile, brand = random.choice(self.PLAT)
         is_edge = (not mobile) and random.random() < 0.2
         if is_edge:
             v = random.choice(self.EDGE)
-            ua = f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v} Safari/537.36 Edg/{v}"
+            ua = (f"Mozilla/5.0 ({p}) AppleWebKit/537.36 "
+                  f"(KHTML, like Gecko) Chrome/{v} Safari/537.36 Edg/{v}")
             browser = "Edge"
         else:
             v = random.choice(self.CHROME)
-            ua = (f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) "
-                  f"Chrome/{v} {'Mobile ' if mobile else ''}Safari/537.36")
+            ua = (f"Mozilla/5.0 ({p}) AppleWebKit/537.36 "
+                  f"(KHTML, like Gecko) Chrome/{v} "
+                  f"{'Mobile ' if mobile else ''}Safari/537.36")
             browser = "Chrome"
         return {
             "ua": ua, "brand": brand, "mobile": mobile,
@@ -87,6 +95,7 @@ class FingerprintPool:
         }
 
     def headers(self, fp: dict, extra: dict = None) -> dict:
+        """Sinh header từ fingerprint."""
         h = {
             "User-Agent": fp["ua"],
             "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
@@ -111,7 +120,7 @@ class FingerprintPool:
 
 
 # ============================================================
-# L3 — BEHAVIOR ENGINE
+# L3 — BEHAVIOR ENGINE: giả lập người thật
 # ============================================================
 class Behavior:
     TYPING_SLOW = (0.10, 0.25)
@@ -124,6 +133,7 @@ class Behavior:
 
     @staticmethod
     def typing(text: str) -> float:
+        """Tính thời gian gõ phím cho đoạn text."""
         n = len(text)
         if n == 0:
             return 0.5
@@ -135,10 +145,12 @@ class Behavior:
 
     @staticmethod
     def pre_send():
+        """Delay trước khi gửi (giả lập đọc tin)."""
         time.sleep(random.uniform(*Behavior.READING))
 
     @staticmethod
     def maybe_break():
+        """Xác suất nghỉ ngắn/dài như người thật."""
         r = random.random()
         if r < Behavior.LONG_BREAK:
             time.sleep(random.uniform(*Behavior.LONG_T))
@@ -147,11 +159,12 @@ class Behavior:
 
     @staticmethod
     def humanize(text: str) -> str:
+        """Thêm emoji, dấu câu, biến thể để tránh pattern."""
         v = [text]
         if random.random() < 0.35:
             v.append(f"{text} {random.choice('😀😅🤣😏😎🙃😹🤔😐🥲👍🔥💯❤️✨')}")
         if random.random() < 0.4:
-            v.append(f"{text}{random.choice(['...', '..', '!', '?', '!!', '~', ' 😉'])}")
+            v.append(f"{text}{random.choice(['...', '..', '!', '?', '!!', '~'])}")
         if random.random() < 0.15:
             v.append(text.replace(" ", "  ", 1))
         if random.random() < 0.08:
@@ -160,6 +173,7 @@ class Behavior:
 
     @staticmethod
     def typo(t: str, p=0.05) -> str:
+        """Thêm lỗi chính tả nhỏ."""
         if random.random() > p:
             return t
         chars = list(t)
@@ -171,6 +185,7 @@ class Behavior:
 
     @staticmethod
     def vary(t: str) -> str:
+        """Biến đổi độ dài tin nhắn."""
         r = random.random()
         if r < 0.2:
             return t[:max(1, len(t) // 2)]
@@ -180,6 +195,7 @@ class Behavior:
 
     @staticmethod
     def entropy_mask(t: str) -> str:
+        """Chèn ký tự zero-width để tránh hash-detect."""
         if random.random() < 0.12:
             zw = random.choice(["\u200b", "\u200c", "\u200d", "\ufeff"])
             pos = random.randint(1, max(1, len(t) - 1))
@@ -188,7 +204,7 @@ class Behavior:
 
 
 # ============================================================
-# L4 — RATE BALANCER
+# L4 — RATE BALANCER: min 3s, adaptive 3-120s
 # ============================================================
 class RateBalancer:
     MIN_DELAY = 3.0
@@ -208,6 +224,7 @@ class RateBalancer:
             self.current = self.manual
 
     def record(self, ok: bool):
+        """Ghi kết quả request, tự điều chỉnh delay."""
         with self.lock:
             self.window.append(ok)
             if self.manual is not None:
@@ -230,7 +247,7 @@ class RateBalancer:
 
 
 # ============================================================
-# L5 — MULTI-TIER CIRCUIT BREAKER
+# L5 — MULTI-TIER CIRCUIT BREAKER: 3 tầng cooldown
 # ============================================================
 class MultiCircuit:
     def __init__(self, thresholds=(0.6, 0.75, 0.9), window=25,
@@ -272,7 +289,7 @@ class MultiCircuit:
 
 
 # ============================================================
-# L6 — COOKIE GUARD BASE
+# L6 — COOKIE GUARD BASE: rate limit riêng từng cookie
 # ============================================================
 class CookieGuardBase:
     def __init__(self):
@@ -298,7 +315,7 @@ class CookieGuardBase:
 
 
 # ============================================================
-# L7 — ANOMALY & ESCAPE
+# L7 — ANOMALY DETECTOR: phát hiện bất thường
 # ============================================================
 class Anomaly:
     def __init__(self):
@@ -310,6 +327,7 @@ class Anomaly:
             self.history.append((latency, status))
 
     def is_anomaly(self) -> bool:
+        """True nếu >50% request gần đây fail hoặc latency cao."""
         with self.lock:
             if len(self.history) < 15:
                 return False
@@ -319,18 +337,18 @@ class Anomaly:
 
 
 # ============================================================
-# BAN DETECTOR
+# BAN DETECTOR: nhận diện tín hiệu ban
 # ============================================================
 class BanDetector:
     SIGNALS = {
         "checkpoint": ["checkpoint", "xác minh danh tính", "verify your identity",
                        "xác minh tài khoản"],
-        "blocked":    ["temporarily blocked", "bị chặn tạm thời", "unusual activity",
-                       "bất thường", "tài khoản bị tạm khóa"],
-        "disabled":   ["account disabled", "vô hiệu hóa", "suspended",
-                       "tài khoản bị vô hiệu"],
-        "captcha":    ["captcha", "recaptcha", "are you human", "xác minh bạn là người"],
-        "honeypot":   ["honeypot", "canary", "bait"],
+        "blocked": ["temporarily blocked", "bị chặn tạm thời",
+                    "unusual activity", "bất thường", "tài khoản bị tạm khóa"],
+        "disabled": ["account disabled", "vô hiệu hóa", "suspended",
+                     "tài khoản bị vô hiệu"],
+        "captcha": ["captcha", "recaptcha", "are you human", "xác minh bạn là người"],
+        "honeypot": ["honeypot", "canary", "bait"],
     }
 
     @staticmethod
@@ -350,7 +368,7 @@ class BanDetector:
 
 
 # ============================================================
-# CORE
+# CORE FIREWALL: gộp 7 lớp lại
 # ============================================================
 class Firewall:
     name = "base"
@@ -369,19 +387,19 @@ class Firewall:
         self.lock = threading.Lock()
         self.stats = {"ok": 0, "fail": 0, "blocked": 0, "banned": 0,
                       "cb": 0, "captcha": 0, "anomaly": 0}
-        # fingerprint per-cookie
+        # Fingerprint cố định per-cookie
         self.cookie_fp = {}
         self.fp_lock = threading.Lock()
 
-    # ---------- fingerprint per cookie ----------
     def _fp_for(self, cookie: str) -> dict:
+        """Lấy fingerprint cho cookie, giữ ổn định."""
         if not cookie:
             return self.fp_pool._gen()
         h = hashlib.md5(cookie.encode()).hexdigest()[:12]
         with self.fp_lock:
             if h not in self.cookie_fp:
                 self.cookie_fp[h] = self.fp_pool._gen()
-            # rotate nhẹ sau 200 request
+            # Xoay nhẹ 0.5% để tránh pattern
             if random.random() < 0.005:
                 self.cookie_fp[h] = self.fp_pool._gen()
             return self.cookie_fp[h]
@@ -391,26 +409,36 @@ class Firewall:
         h = self.fp_pool.headers(fp, extra)
         return self.shaper.shape(h)
 
-    # ---------- request ----------
     def request(self, method, url, cookie=None, **kw):
+        """Request với đầy đủ 7 lớp bảo vệ."""
+        # L5: chờ nếu circuit đang mở
         self.cb.wait_if_open()
 
         headers = self._headers(cookie, kw.pop("headers", {}))
         timeout = kw.pop("timeout", 25)
         sess = kw.pop("session", None) or requests.Session()
-        ad = HTTPAdapter(max_retries=Retry(total=0),
-                         pool_connections=5, pool_maxsize=10)
+
+        # Adapter an toàn, fallback nếu lỗi
+        try:
+            ad = HTTPAdapter(max_retries=Retry(total=0),
+                             pool_connections=5, pool_maxsize=10)
+        except TypeError:
+            ad = HTTPAdapter(max_retries=Retry(total=0))
         sess.mount("https://", ad)
         sess.mount("http://", ad)
 
         if cookie and "Cookie" not in headers:
             headers["Cookie"] = cookie
 
+        # Retry loop
         for attempt in range(self.RETRY):
+            # L4/L6: chờ delay
             if cookie:
                 self.cookie_guard.wait(cookie, self.BASE_DELAY)
             else:
                 self.rate.wait()
+
+            # L3: break ngẫu nhiên
             if attempt:
                 self.behavior.maybe_break()
 
@@ -419,8 +447,9 @@ class Firewall:
                 r = sess.request(method, url, headers=headers,
                                  timeout=timeout, verify=False, **kw)
                 dt = time.time() - t0
-                self.anomaly.record(dt, r.status_code)
 
+                # L7: ghi anomaly
+                self.anomaly.record(dt, r.status_code)
                 if self.anomaly.is_anomaly():
                     with self.lock:
                         self.stats["anomaly"] += 1
@@ -429,6 +458,7 @@ class Firewall:
                     self.cb.record(False)
                     time.sleep(random.uniform(8, 20))
 
+                # Detect ban
                 ban = BanDetector.check(r.text, r.status_code)
                 if ban in ("checkpoint", "disabled", "blocked", "honeypot"):
                     with self.lock:
@@ -447,6 +477,7 @@ class Firewall:
                     time.sleep(random.uniform(20, 45))
                     continue
 
+                # Thành công
                 if r.status_code in (200, 201, 204):
                     with self.lock:
                         self.stats["ok"] += 1
@@ -457,6 +488,7 @@ class Firewall:
                     self.cb.record(True)
                     return r
 
+                # Rate limit / forbidden
                 if r.status_code in (429, 403, 419):
                     with self.lock:
                         self.stats["blocked"] += 1
@@ -472,6 +504,8 @@ class Firewall:
                     self.cookie_guard.record(cookie, False, self.BASE_DELAY)
             except Exception:
                 self.cb.record(False)
+
+            # Exponential backoff
             time.sleep(self.BACKOFF * (2 ** attempt) * random.uniform(0.8, 1.2))
 
         with self.lock:
@@ -485,6 +519,7 @@ class Firewall:
         return self.request("POST", u, **k)
 
     def report(self):
+        """Báo cáo trạng thái firewall."""
         with self.lock:
             s = self.stats
         cb = f"OPEN-T{self.cb.tier}" if self.cb.is_open() else "OK"
@@ -496,6 +531,9 @@ class Firewall:
                 f"| Delay:`{self.rate.current:.1f}s`{note} CB:`{cb}`")
 
 
+# ============================================================
+# CÁC APP FIREWALL CỤ THỂ
+# ============================================================
 class FBFW(Firewall):
     name = "Facebook"
     BASE_DELAY = 4.0
@@ -552,6 +590,7 @@ class SMSFW(Firewall):
     BACKOFF = 3.0
 
 
+# ----- Registry toàn cục -----
 FW = {
     "fb": FBFW(),
     "zalo": ZaloFW(),
