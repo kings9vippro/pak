@@ -1,17 +1,17 @@
 """
-FIREWALL v6.0 — 7-LAYER ELITE ANTI-BAN
-L1: Request Shaper (HTTP/2, header order, TLS mimic)
-L2: Fingerprint (device, OS, screen, timezone, canvas)
-L3: Behavior (typing rhythm, reading, human breaks)
-L4: Rate Balancer (min 3s, adaptive)
-L5: Circuit Breaker (multi-tier)
-L6: Cookie Guardian (backup, warm, health)
-L7: Anomaly & Escape (auto-disable)
+FIREWALL v7.0 — ELITE ANTI-BAN FOR FB + ZALO
+7 lớp bảo vệ:
+L1: Request Shaper (Chrome header order, TLS 1.3, HTTP/2 hint)
+L2: Fingerprint Pool (giữ ổn định per-cookie, rotate giữa cookie)
+L3: Behavior Engine (typing rhythm, reading, break, entropy mask)
+L4: Rate Balancer (min 3s, adaptive 3s → 120s)
+L5: Multi-Tier Circuit Breaker (60s → 300s → 900s)
+L6: Cookie Guardian (per-cookie rate + warm + backup)
+L7: Anomaly & Auto-Escape (latency/status, tự dừng task)
 """
-import time, random, threading, hashlib, ssl, socket
+import time, random, threading, hashlib, ssl
 from collections import deque
-from dataclasses import dataclass
-from typing import Optional, Dict, Callable
+from typing import Optional
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -22,30 +22,17 @@ from utils import random_ua, jitter
 # L1 — REQUEST SHAPER
 # ============================================================
 class RequestShaper:
-    """Sắp xếp header đúng thứ tự Chrome, thêm TLS mimic."""
     HEADER_ORDER = [
-        "Host", "Connection", "Content-Length", "sec-ch-ua",
-        "sec-ch-ua-mobile", "sec-ch-ua-platform", "Upgrade-Insecure-Requests",
-        "User-Agent", "Accept", "Sec-Fetch-Site", "Sec-Fetch-Mode",
-        "Sec-Fetch-User", "Sec-Fetch-Dest", "Referer", "Accept-Encoding",
+        "Host", "Connection", "Content-Length",
+        "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
+        "Upgrade-Insecure-Requests", "User-Agent", "Accept",
+        "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User",
+        "Sec-Fetch-Dest", "Referer", "Accept-Encoding",
         "Accept-Language", "Cookie", "Origin", "DNT",
         "X-FB-Friendly-Name", "X-FB-LSD",
     ]
 
-    def __init__(self):
-        self.ssl_context = ssl.create_default_context()
-        self.ssl_context.set_ciphers(":".join([
-            "ECDHE-ECDSA-AES128-GCM-SHA256",
-            "ECDHE-RSA-AES128-GCM-SHA256",
-            "ECDHE-ECDSA-AES256-GCM-SHA384",
-            "ECDHE-RSA-AES256-GCM-SHA384",
-            "ECDHE-ECDSA-CHACHA20-POLY1305",
-            "ECDHE-RSA-CHACHA20-POLY1305",
-        ]))
-        self.ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-
     def shape(self, headers: dict) -> dict:
-        """Sắp xếp lại header theo thứ tự Chrome."""
         out = {}
         for k in self.HEADER_ORDER:
             if k in headers:
@@ -57,60 +44,54 @@ class RequestShaper:
 
 
 # ============================================================
-# L2 — FINGERPRINT (đầy đủ)
+# L2 — FINGERPRINT POOL
 # ============================================================
-class Fingerprint:
+class FingerprintPool:
     PLAT = [
-        ("Windows NT 10.0; Win64; x64", False, "Windows", "10.0.0"),
-        ("Windows NT 10.0; WOW64", False, "Windows", "10.0.0"),
-        ("Macintosh; Intel Mac OS X 10_15_7", False, "macOS", "14.2.0"),
-        ("Macintosh; Intel Mac OS X 13_6_1", False, "macOS", "13.6.1"),
-        ("X11; Linux x86_64", False, "Linux", ""),
-        ("iPhone; CPU iPhone OS 17_2 like Mac OS X", True, "iOS", "17.2"),
-        ("iPhone; CPU iPhone OS 16_7 like Mac OS X", True, "iOS", "16.7"),
-        ("Linux; Android 14; SM-S918B", True, "Android", "14"),
-        ("Linux; Android 13; Pixel 7", True, "Android", "13"),
+        ("Windows NT 10.0; Win64; x64", False, "Windows"),
+        ("Windows NT 10.0; WOW64", False, "Windows"),
+        ("Macintosh; Intel Mac OS X 10_15_7", False, "macOS"),
+        ("Macintosh; Intel Mac OS X 13_6_1", False, "macOS"),
+        ("X11; Linux x86_64", False, "Linux"),
+        ("iPhone; CPU iPhone OS 17_2 like Mac OS X", True, "iOS"),
+        ("iPhone; CPU iPhone OS 16_7 like Mac OS X", True, "iOS"),
+        ("Linux; Android 14; SM-S918B", True, "Android"),
+        ("Linux; Android 13; Pixel 7", True, "Android"),
     ]
-    CHROME_V = ["120.0.0.0","121.0.0.0","122.0.0.0","123.0.0.0","124.0.0.0","125.0.0.0","126.0.0.0"]
-    EDGE_V   = ["120.0.0.0","121.0.0.0","122.0.0.0"]
-    RES = ["1920x1080","2560x1440","1366x768","1440x900","3840x2160","390x844","414x896","360x780"]
-    TZ = ["Asia/Ho_Chi_Minh","Asia/Bangkok","Asia/Singapore","Asia/Hong_Kong"]
+    CHROME = ["120.0.0.0", "121.0.0.0", "122.0.0.0", "123.0.0.0",
+              "124.0.0.0", "125.0.0.0", "126.0.0.0"]
+    EDGE = ["120.0.0.0", "121.0.0.0", "122.0.0.0"]
+    RES = ["1920x1080", "2560x1440", "1366x768", "1440x900",
+           "3840x2160", "390x844", "414x896", "360x780"]
+    TZ = ["Asia/Ho_Chi_Minh", "Asia/Bangkok", "Asia/Singapore"]
 
-    def __init__(self):
-        self.cur = self._gen()
-
-    def _gen(self):
-        p, mobile, brand, ver_os = random.choice(self.PLAT)
-        is_edge = random.random() < 0.2 and not mobile
+    def _gen(self) -> dict:
+        p, mobile, brand = random.choice(self.PLAT)
+        is_edge = (not mobile) and random.random() < 0.2
         if is_edge:
-            v = random.choice(self.EDGE_V)
+            v = random.choice(self.EDGE)
             ua = f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v} Safari/537.36 Edg/{v}"
             browser = "Edge"
         else:
-            v = random.choice(self.CHROME_V)
-            if mobile:
-                ua = f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v} Mobile Safari/537.36"
-            else:
-                ua = f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v} Safari/537.36"
+            v = random.choice(self.CHROME)
+            ua = (f"Mozilla/5.0 ({p}) AppleWebKit/537.36 (KHTML, like Gecko) "
+                  f"Chrome/{v} {'Mobile ' if mobile else ''}Safari/537.36")
             browser = "Chrome"
         return {
             "ua": ua, "brand": brand, "mobile": mobile,
-            "ver_os": ver_os, "browser": browser, "chrome_v": v,
+            "browser": browser, "chrome_v": v,
             "res": random.choice(self.RES),
-            "lang": random.choice(["vi-VN,vi;q=0.9","en-US,en;q=0.9","vi,en-US;q=0.8"]),
+            "lang": random.choice(["vi-VN,vi;q=0.9", "en-US,en;q=0.9"]),
             "tz": random.choice(self.TZ),
             "device_id": hashlib.md5(str(random.random()).encode()).hexdigest()[:16],
         }
 
-    def rotate(self):
-        self.cur = self._gen()
-
-    def headers(self, extra=None):
-        f = self.cur
+    def headers(self, fp: dict, extra: dict = None) -> dict:
         h = {
-            "User-Agent": f["ua"],
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": f["lang"],
+            "User-Agent": fp["ua"],
+            "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
+                       "image/avif,image/webp,image/apng,*/*;q=0.8"),
+            "Accept-Language": fp["lang"],
             "Accept-Encoding": "gzip, deflate, br",
             "DNT": "1",
             "Connection": "keep-alive",
@@ -119,17 +100,18 @@ class Fingerprint:
             "Sec-Fetch-Site": "none",
             "Sec-Fetch-User": "?1",
             "Upgrade-Insecure-Requests": "1",
-            "sec-ch-ua": f'"Chromium";v="{f["brand"]}", "Not A;Brand";v="24"',
-            "sec-ch-ua-mobile": "?1" if f["mobile"] else "?0",
-            "sec-ch-ua-platform": f'"{f["brand"]}"',
-            "sec-ch-prefers-color-scheme": random.choice(["light","dark"]),
+            "sec-ch-ua": f'"Chromium";v="{fp["brand"]}", "Not A;Brand";v="24"',
+            "sec-ch-ua-mobile": "?1" if fp["mobile"] else "?0",
+            "sec-ch-ua-platform": f'"{fp["brand"]}"',
+            "sec-ch-prefers-color-scheme": random.choice(["light", "dark"]),
         }
-        if extra: h.update(extra)
+        if extra:
+            h.update(extra)
         return h
 
 
 # ============================================================
-# L3 — BEHAVIOR
+# L3 — BEHAVIOR ENGINE
 # ============================================================
 class Behavior:
     TYPING_SLOW = (0.10, 0.25)
@@ -143,7 +125,8 @@ class Behavior:
     @staticmethod
     def typing(text: str) -> float:
         n = len(text)
-        if n == 0: return 0.5
+        if n == 0:
+            return 0.5
         head = min(5, n) * random.uniform(*Behavior.TYPING_SLOW)
         mid = max(0, n - 10) * random.uniform(*Behavior.TYPING_FAST)
         tail = min(5, n) * random.uniform(*Behavior.TYPING_SLOW)
@@ -168,7 +151,7 @@ class Behavior:
         if random.random() < 0.35:
             v.append(f"{text} {random.choice('😀😅🤣😏😎🙃😹🤔😐🥲👍🔥💯❤️✨')}")
         if random.random() < 0.4:
-            v.append(f"{text}{random.choice(['...','..','!','?','!!','~',' 😉'])}")
+            v.append(f"{text}{random.choice(['...', '..', '!', '?', '!!', '~', ' 😉'])}")
         if random.random() < 0.15:
             v.append(text.replace(" ", "  ", 1))
         if random.random() < 0.08:
@@ -177,10 +160,11 @@ class Behavior:
 
     @staticmethod
     def typo(t: str, p=0.05) -> str:
-        if random.random() > p: return t
+        if random.random() > p:
+            return t
         chars = list(t)
         for _ in range(random.randint(1, 2)):
-            i = random.randint(0, len(chars)-1)
+            i = random.randint(0, len(chars) - 1)
             if chars[i].isalpha():
                 chars[i] = random.choice("abcdefghijklmnopqrstuvwxyz")
         return "".join(chars)
@@ -188,28 +172,27 @@ class Behavior:
     @staticmethod
     def vary(t: str) -> str:
         r = random.random()
-        if r < 0.2: return t[:max(1, len(t)//2)]
-        if r < 0.35: return t + " " + random.choice(["ok","ừ","hmm","...",":)))"])
+        if r < 0.2:
+            return t[:max(1, len(t) // 2)]
+        if r < 0.35:
+            return t + " " + random.choice(["ok", "ừ", "hmm", "...", ":)))"])
         return t
 
     @staticmethod
     def entropy_mask(t: str) -> str:
         if random.random() < 0.12:
-            zw = random.choice(["\u200b","\u200c","\u200d","\ufeff"])
-            pos = random.randint(1, max(1, len(t)-1))
+            zw = random.choice(["\u200b", "\u200c", "\u200d", "\ufeff"])
+            pos = random.randint(1, max(1, len(t) - 1))
             t = t[:pos] + zw + t[pos:]
         return t
 
 
 # ============================================================
-# L4 — RATE BALANCER (min 3s, adaptive)
+# L4 — RATE BALANCER
 # ============================================================
 class RateBalancer:
-    """
-    Đảm bảo delay tối thiểu 3s, adaptive lên tới 60s khi fail.
-    """
     MIN_DELAY = 3.0
-    MAX_DELAY = 60.0
+    MAX_DELAY = 120.0
 
     def __init__(self, base_delay=3.0):
         self.base = max(self.MIN_DELAY, base_delay)
@@ -247,10 +230,11 @@ class RateBalancer:
 
 
 # ============================================================
-# L5 — CIRCUIT BREAKER (multi-tier)
+# L5 — MULTI-TIER CIRCUIT BREAKER
 # ============================================================
 class MultiCircuit:
-    def __init__(self, thresholds=(0.6, 0.75, 0.9), window=25, cooldowns=(60, 180, 600)):
+    def __init__(self, thresholds=(0.6, 0.75, 0.9), window=25,
+                 cooldowns=(60, 300, 900)):
         self.thresholds = thresholds
         self.window = window
         self.cooldowns = cooldowns
@@ -274,7 +258,8 @@ class MultiCircuit:
                 self.results.clear()
                 return False
             return True
-        if len(self.results) < self.window: return False
+        if len(self.results) < self.window:
+            return False
         fail = 1 - sum(self.results) / len(self.results)
         return fail >= self.thresholds[self.tier]
 
@@ -282,11 +267,12 @@ class MultiCircuit:
         return bool(self.opened_at)
 
     def wait_if_open(self):
-        while self.is_open(): time.sleep(2)
+        while self.is_open():
+            time.sleep(2)
 
 
 # ============================================================
-# L6 — COOKIE GUARDIAN (gọn — full ở cookie_guard_v2.py)
+# L6 — COOKIE GUARD BASE
 # ============================================================
 class CookieGuardBase:
     def __init__(self):
@@ -325,10 +311,42 @@ class Anomaly:
 
     def is_anomaly(self) -> bool:
         with self.lock:
-            if len(self.history) < 15: return False
+            if len(self.history) < 15:
+                return False
             avg_status = sum(1 for h in self.history if h[1] >= 400) / len(self.history)
             avg_lat = sum(h[0] for h in self.history) / len(self.history)
             return avg_status > 0.5 or avg_lat > 35
+
+
+# ============================================================
+# BAN DETECTOR
+# ============================================================
+class BanDetector:
+    SIGNALS = {
+        "checkpoint": ["checkpoint", "xác minh danh tính", "verify your identity",
+                       "xác minh tài khoản"],
+        "blocked":    ["temporarily blocked", "bị chặn tạm thời", "unusual activity",
+                       "bất thường", "tài khoản bị tạm khóa"],
+        "disabled":   ["account disabled", "vô hiệu hóa", "suspended",
+                       "tài khoản bị vô hiệu"],
+        "captcha":    ["captcha", "recaptcha", "are you human", "xác minh bạn là người"],
+        "honeypot":   ["honeypot", "canary", "bait"],
+    }
+
+    @staticmethod
+    def check(txt: str, code: int) -> Optional[str]:
+        if not txt:
+            return None
+        t = txt.lower()
+        for sig, kws in BanDetector.SIGNALS.items():
+            for kw in kws:
+                if kw in t:
+                    return sig
+        if code in (401, 403):
+            return "forbidden"
+        if code == 429:
+            return "rate_limit"
+        return None
 
 
 # ============================================================
@@ -336,47 +354,65 @@ class Anomaly:
 # ============================================================
 class Firewall:
     name = "base"
-    BASE_DELAY = 3.0        # min 3s
+    BASE_DELAY = 3.0
     RETRY = 4
     BACKOFF = 1.5
 
     def __init__(self):
         self.shaper = RequestShaper()
-        self.fp = Fingerprint()
+        self.fp_pool = FingerprintPool()
         self.behavior = Behavior()
         self.rate = RateBalancer(self.BASE_DELAY)
         self.cb = MultiCircuit()
         self.cookie_guard = CookieGuardBase()
         self.anomaly = Anomaly()
         self.lock = threading.Lock()
-        self.stats = {"ok":0, "fail":0, "blocked":0, "banned":0, "cb":0, "captcha":0}
+        self.stats = {"ok": 0, "fail": 0, "blocked": 0, "banned": 0,
+                      "cb": 0, "captcha": 0, "anomaly": 0}
+        # fingerprint per-cookie
+        self.cookie_fp = {}
+        self.fp_lock = threading.Lock()
 
-    def _headers(self, extra=None):
-        h = self.fp.headers(extra)
+    # ---------- fingerprint per cookie ----------
+    def _fp_for(self, cookie: str) -> dict:
+        if not cookie:
+            return self.fp_pool._gen()
+        h = hashlib.md5(cookie.encode()).hexdigest()[:12]
+        with self.fp_lock:
+            if h not in self.cookie_fp:
+                self.cookie_fp[h] = self.fp_pool._gen()
+            # rotate nhẹ sau 200 request
+            if random.random() < 0.005:
+                self.cookie_fp[h] = self.fp_pool._gen()
+            return self.cookie_fp[h]
+
+    def _headers(self, cookie=None, extra=None):
+        fp = self._fp_for(cookie)
+        h = self.fp_pool.headers(fp, extra)
         return self.shaper.shape(h)
 
+    # ---------- request ----------
     def request(self, method, url, cookie=None, **kw):
         self.cb.wait_if_open()
-        if random.random() < 0.2: self.fp.rotate()
 
-        headers = self._headers(kw.pop("headers", {}))
+        headers = self._headers(cookie, kw.pop("headers", {}))
         timeout = kw.pop("timeout", 25)
         sess = kw.pop("session", None) or requests.Session()
-        # retry adapter
-        ad = HTTPAdapter(max_retries=Retry(total=0), pool_connections=5, pool_maxsize=10)
-        sess.mount("https://", ad); sess.mount("http://", ad)
+        ad = HTTPAdapter(max_retries=Retry(total=0),
+                         pool_connections=5, pool_maxsize=10)
+        sess.mount("https://", ad)
+        sess.mount("http://", ad)
 
         if cookie and "Cookie" not in headers:
             headers["Cookie"] = cookie
 
         for attempt in range(self.RETRY):
-            # Cookie guard wait
             if cookie:
                 self.cookie_guard.wait(cookie, self.BASE_DELAY)
             else:
                 self.rate.wait()
-
-            if attempt: self.behavior.maybe_break()
+            if attempt:
+                self.behavior.maybe_break()
 
             try:
                 t0 = time.time()
@@ -386,107 +422,143 @@ class Firewall:
                 self.anomaly.record(dt, r.status_code)
 
                 if self.anomaly.is_anomaly():
-                    with self.lock: self.stats["captcha"] += 1
-                    if cookie: self.cookie_guard.record(cookie, False, self.BASE_DELAY)
+                    with self.lock:
+                        self.stats["anomaly"] += 1
+                    if cookie:
+                        self.cookie_guard.record(cookie, False, self.BASE_DELAY)
                     self.cb.record(False)
                     time.sleep(random.uniform(8, 20))
 
-                # Ban detect
-                ban = self._detect_ban(r.text, r.status_code)
-                if ban in ("checkpoint","disabled","blocked","honeypot"):
-                    with self.lock: self.stats["banned"] += 1
-                    if cookie: self.cookie_guard.record(cookie, False, self.BASE_DELAY)
+                ban = BanDetector.check(r.text, r.status_code)
+                if ban in ("checkpoint", "disabled", "blocked", "honeypot"):
+                    with self.lock:
+                        self.stats["banned"] += 1
+                    if cookie:
+                        self.cookie_guard.record(cookie, False, self.BASE_DELAY)
                     self.cb.record(False)
                     time.sleep(random.uniform(10, 30))
                     continue
                 if ban == "captcha":
-                    with self.lock: self.stats["captcha"] += 1
-                    if cookie: self.cookie_guard.record(cookie, False, self.BASE_DELAY)
+                    with self.lock:
+                        self.stats["captcha"] += 1
+                    if cookie:
+                        self.cookie_guard.record(cookie, False, self.BASE_DELAY)
                     self.cb.record(False)
                     time.sleep(random.uniform(20, 45))
                     continue
 
-                if r.status_code in (200,201,204):
-                    with self.lock: self.stats["ok"] += 1
-                    if cookie: self.cookie_guard.record(cookie, True, self.BASE_DELAY)
-                    else: self.rate.record(True)
+                if r.status_code in (200, 201, 204):
+                    with self.lock:
+                        self.stats["ok"] += 1
+                    if cookie:
+                        self.cookie_guard.record(cookie, True, self.BASE_DELAY)
+                    else:
+                        self.rate.record(True)
                     self.cb.record(True)
                     return r
 
-                if r.status_code in (429,403,419):
-                    with self.lock: self.stats["blocked"] += 1
-                    if cookie: self.cookie_guard.record(cookie, False, self.BASE_DELAY)
+                if r.status_code in (429, 403, 419):
+                    with self.lock:
+                        self.stats["blocked"] += 1
+                    if cookie:
+                        self.cookie_guard.record(cookie, False, self.BASE_DELAY)
                     self.cb.record(False)
-                    w = self.BACKOFF * (2**attempt) * random.uniform(1.5, 2.5)
+                    w = self.BACKOFF * (2 ** attempt) * random.uniform(1.5, 2.5)
                     time.sleep(min(w, 120))
                     continue
 
                 self.cb.record(False)
-                if cookie: self.cookie_guard.record(cookie, False, self.BASE_DELAY)
+                if cookie:
+                    self.cookie_guard.record(cookie, False, self.BASE_DELAY)
             except Exception:
                 self.cb.record(False)
-            time.sleep(self.BACKOFF * (2**attempt) * random.uniform(0.8, 1.2))
+            time.sleep(self.BACKOFF * (2 ** attempt) * random.uniform(0.8, 1.2))
 
-        with self.lock: self.stats["fail"] += 1
+        with self.lock:
+            self.stats["fail"] += 1
         return None
 
-    def get(self,u,**k):  return self.request("GET",u,**k)
-    def post(self,u,**k): return self.request("POST",u,**k)
+    def get(self, u, **k):
+        return self.request("GET", u, **k)
 
-    @staticmethod
-    def _detect_ban(txt, code):
-        if not txt: return None
-        t = txt.lower()
-        for sig, kws in {
-            "checkpoint":["checkpoint","xác minh danh tính","verify your identity"],
-            "blocked":["temporarily blocked","bị chặn tạm thời","unusual activity"],
-            "disabled":["account disabled","vô hiệu hóa","suspended"],
-            "captcha":["captcha","recaptcha","are you human"],
-            "honeypot":["honeypot","canary"],
-        }.items():
-            for kw in kws:
-                if kw in t: return sig
-        if code in (401,403): return "forbidden"
-        if code == 429: return "rate_limit"
-        return None
+    def post(self, u, **k):
+        return self.request("POST", u, **k)
 
     def report(self):
-        with self.lock: s = self.stats
+        with self.lock:
+            s = self.stats
         cb = f"OPEN-T{self.cb.tier}" if self.cb.is_open() else "OK"
         man = self.rate.manual
         note = f" (manual {man}s)" if man else ""
         return (f"🛡 *{self.name}* OK:`{s['ok']}` Fail:`{s['fail']}` "
                 f"Block:`{s['blocked']}` Ban:`{s['banned']}` Captcha:`{s['captcha']}` "
+                f"Anomaly:`{s['anomaly']}` "
                 f"| Delay:`{self.rate.current:.1f}s`{note} CB:`{cb}`")
 
 
 class FBFW(Firewall):
-    name = "Facebook"; BASE_DELAY = 4.0; RETRY = 5; BACKOFF = 2.0
+    name = "Facebook"
+    BASE_DELAY = 4.0
+    RETRY = 5
+    BACKOFF = 2.0
+
 
 class ZaloFW(Firewall):
-    name = "Zalo"; BASE_DELAY = 3.0; RETRY = 3; BACKOFF = 1.2
+    name = "Zalo"
+    BASE_DELAY = 3.0
+    RETRY = 3
+    BACKOFF = 1.2
+
 
 class DiscordFW(Firewall):
-    name = "Discord"; BASE_DELAY = 3.0; RETRY = 3; BACKOFF = 1.0
+    name = "Discord"
+    BASE_DELAY = 3.0
+    RETRY = 3
+    BACKOFF = 1.0
+
 
 class TelegramFW(Firewall):
-    name = "Telegram"; BASE_DELAY = 3.0; RETRY = 4; BACKOFF = 2.5
+    name = "Telegram"
+    BASE_DELAY = 3.0
+    RETRY = 4
+    BACKOFF = 2.5
+
 
 class GmailFW(Firewall):
-    name = "Gmail"; BASE_DELAY = 10.0; RETRY = 2; BACKOFF = 6.0
+    name = "Gmail"
+    BASE_DELAY = 10.0
+    RETRY = 2
+    BACKOFF = 6.0
+
 
 class IGFW(Firewall):
-    name = "Instagram"; BASE_DELAY = 8.0; RETRY = 3; BACKOFF = 3.0
+    name = "Instagram"
+    BASE_DELAY = 8.0
+    RETRY = 3
+    BACKOFF = 3.0
+
 
 class WeChatFW(Firewall):
-    name = "WeChat"; BASE_DELAY = 4.0; RETRY = 3; BACKOFF = 2.0
+    name = "WeChat"
+    BASE_DELAY = 4.0
+    RETRY = 3
+    BACKOFF = 2.0
+
 
 class SMSFW(Firewall):
-    name = "SMS"; BASE_DELAY = 5.0; RETRY = 2; BACKOFF = 3.0
+    name = "SMS"
+    BASE_DELAY = 5.0
+    RETRY = 2
+    BACKOFF = 3.0
 
 
 FW = {
-    "fb": FBFW(), "zalo": ZaloFW(), "discord": DiscordFW(),
-    "telegram": TelegramFW(), "gmail": GmailFW(),
-    "ig": IGFW(), "wechat": WeChatFW(), "sms": SMSFW(),
+    "fb": FBFW(),
+    "zalo": ZaloFW(),
+    "discord": DiscordFW(),
+    "telegram": TelegramFW(),
+    "gmail": GmailFW(),
+    "ig": IGFW(),
+    "wechat": WeChatFW(),
+    "sms": SMSFW(),
 }
