@@ -7,8 +7,10 @@ services:
     startCommand: python main.py
     envVars:
       - key: BOT_TOKEN
-        sync: false
+        value: "8908394974:AAEoCVzAtD8xc_2N49rHP43HUIGrTEkYGX4"
       - key: ADMIN_IDS
-        sync: false
+        value: "6094686933"
       - key: TZ
         value: Asia/Ho_Chi_Minh
+      - key: PYTHON_VERSION
+        value: 3.11.0
