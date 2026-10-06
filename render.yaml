@@ -5,9 +5,10 @@ services:
     plan: free
     buildCommand: |
       pip install -r requirements.txt
-      playwright install chromium
-      playwright install-deps chromium || true
-    startCommand: python main.py
+      python -m playwright install chromium
+    startCommand: |
+      python -m playwright install chromium || true
+      python main.py
     healthCheckPath: /
     envVars:
       - key: BOT_TOKEN
@@ -18,5 +19,3 @@ services:
         value: Asia/Ho_Chi_Minh
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/.cache/ms-playwright
