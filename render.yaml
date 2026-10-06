@@ -1,9 +1,12 @@
 services:
-  - type: web            # ← ĐỔI TỪ worker SANG web
+  - type: web
     name: alb-forge
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      playwright install chromium
+      playwright install-deps chromium || true
     startCommand: python main.py
     healthCheckPath: /
     envVars:
@@ -15,3 +18,5 @@ services:
         value: Asia/Ho_Chi_Minh
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/.cache/ms-playwright
