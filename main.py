@@ -62,7 +62,7 @@ DATA_DIR = os.environ.get("DATA_DIR", "/tmp/alb_data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-# ============ TASKS ============
+# ============ TASK MANAGER ============
 class Task:
     __slots__ = ("id", "type", "owner", "stop", "start", "thread", "meta")
 
@@ -425,42 +425,42 @@ async def cmd_guard_safe(update, ctx):
 # ============ COOKIE GUIDE ============
 @admin_only
 async def cmd_cookie_fb(u, c):
-    await u.message.reply_text(COOKIE_FB, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_FB)
 
 
 @admin_only
 async def cmd_cookie_zalo(u, c):
-    await u.message.reply_text(COOKIE_ZALO, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_ZALO)
 
 
 @admin_only
 async def cmd_cookie_discord(u, c):
-    await u.message.reply_text(COOKIE_DISCORD, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_DISCORD)
 
 
 @admin_only
 async def cmd_cookie_telegram(u, c):
-    await u.message.reply_text(COOKIE_TELEGRAM, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_TELEGRAM)
 
 
 @admin_only
 async def cmd_cookie_gmail(u, c):
-    await u.message.reply_text(COOKIE_GMAIL, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_GMAIL)
 
 
 @admin_only
 async def cmd_cookie_ig(u, c):
-    await u.message.reply_text(COOKIE_IG, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_IG)
 
 
 @admin_only
 async def cmd_cookie_wechat(u, c):
-    await u.message.reply_text(COOKIE_WECHAT, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_WECHAT)
 
 
 @admin_only
 async def cmd_cookie_sms(u, c):
-    await u.message.reply_text(COOKIE_SMS, parse_mode=ParseMode.MARKDOWN)
+    await u.message.reply_text(COOKIE_SMS)
 
 
 # ============ FACEBOOK ============
@@ -1000,7 +1000,7 @@ async def cmd_tele_spam(u, c):
     await u.message.reply_text(f"✅ Task `{task.id}`", parse_mode=ParseMode.MARKDOWN)
 
 
-# ============ GMAIL — FIXED SYNTAX ============
+# ============ GMAIL — ĐÃ FIX SYNTAX ============
 @admin_only
 async def cmd_gmail_spam(u, c):
     t = u.message.text.replace("/gmail_spam ", "", 1)
@@ -1009,6 +1009,7 @@ async def cmd_gmail_spam(u, c):
         await u.message.reply_text(
             "Cú pháp: /gmail_spam <email>|<pass>|<to>|<msg1;msg2>|<delay>")
         return
+    # Import ở đầu hàm, KHÔNG trong closure để tránh lỗi syntax
     import smtplib
     import ssl as _ssl
     from email.mime.text import MIMEText
@@ -1551,8 +1552,21 @@ def main():
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
+    # Xóa webhook cũ để tránh Conflict
+    try:
+        import requests as _r
+        resp = _r.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",
+            params={"drop_pending_updates": "true"},
+            timeout=10
+        )
+        print(f"[MAIN] deleteWebhook: {resp.status_code} - {resp.text[:120]}")
+    except Exception as e:
+        print(f"[MAIN] Không xóa được webhook: {e}")
+
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
+    # ===== Handlers =====
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(cb_menu))
 
