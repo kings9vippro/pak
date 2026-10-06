@@ -1,4 +1,9 @@
-import time, random
+# ============================================================
+# fb_profile_auto.py — Auto loop cho FB Edit
+# ============================================================
+import time
+import random
+
 from fb_edit import FBEdit
 from firewall_v7 import FW
 from anti_ban_v3 import ANTIBAN
@@ -10,6 +15,7 @@ class FBAutoEdit:
         self.fw = FW["fb"]
 
     def _delay(self, base, cookie):
+        """Tính delay với biological rhythm."""
         d = max(3.0, base * random.uniform(0.9, 1.4))
         if ANTIBAN.is_sleep_hour():
             d += random.uniform(5.0, 15.0)
