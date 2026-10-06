@@ -1,10 +1,17 @@
-"""Chỉnh delay spam. Min 3s."""
-import os, json, threading
+# ============================================================
+# rate_balancer.py — Chỉnh độ giây spam, min 3s
+# ============================================================
+import os
+import json
+import threading
 
-DATA_DIR = "data"
+DATA_DIR = os.environ.get("DATA_DIR", "/tmp/alb_data")
 os.makedirs(DATA_DIR, exist_ok=True)
 PATH = os.path.join(DATA_DIR, "rate_config.json")
+
 _lock = threading.Lock()
+
+# ----- Min delay an toàn: không cho dưới 3s -----
 MIN_SAFE_DELAY = 3.0
 
 DEFAULTS = {
@@ -46,6 +53,7 @@ def get(key: str, default=None) -> float:
 
 
 def set_(key: str, value: float):
+    """Set delay cho key, tự động nâng lên min 3s nếu thấp hơn."""
     with _lock:
         d = _load()
         d[key] = max(MIN_SAFE_DELAY, float(value))
