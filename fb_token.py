@@ -1,9 +1,17 @@
-"""FB Token Grabber — cache 1h, không die cookie."""
-import re, json, time, random, threading, hashlib
+# ============================================================
+# fb_token.py — Lấy token FB, cache 1h
+# Chiến lược: chỉ GET www.facebook.com + business.facebook.com
+# Không đụng endpoint nhạy cảm → cookie không die
+# ============================================================
+import re
+import time
+import random
+import threading
+import hashlib
 from dataclasses import dataclass
 from typing import Optional, Dict
+
 from firewall_v7 import FW
-from cookie_guard_v3 import GUARD3
 
 
 @dataclass
@@ -41,11 +49,13 @@ class FBTokenGrabber:
         self.fw = FW["fb"]
 
     def grab(self, cookie: str, force: bool = False) -> Optional[FBToken]:
+        """Lấy token, có cache."""
         key = self._key(cookie)
         with self._lock:
             t = self._cache.get(key)
         if t and t.is_valid() and not force:
             return t
+
         with self._fetch_lock:
             with self._lock:
                 t = self._cache.get(key)
@@ -73,12 +83,13 @@ class FBTokenGrabber:
         return hashlib.md5(raw.encode()).hexdigest()[:16]
 
     def _fetch(self, cookie: str) -> Optional[FBToken]:
-        h = {"Cookie": cookie}
+        """Fetch token 1 lần."""
         r = self.fw.get("https://www.facebook.com/", cookie=cookie)
         if not r or r.status_code != 200:
             return None
         html = r.text
 
+        # Parse các token ẩn trong HTML
         fb_dtsg = self._grab(html, [
             r'"token":"(.*?)"',
             r'name="fb_dtsg" value="(.*?)"',
@@ -88,14 +99,21 @@ class FBTokenGrabber:
             r'"LSD",\[\],{"token":"(.*?)"',
             r'name="lsd" value="(.*?)"',
         ])
-        jazoest = self._grab(html, [r'jazoest=(\d+)', r'name="jazoest" value="(\d+)"'])
-        uid = self._grab(html, [r'"USER_ID":"(\d+)"', r'"userID":"(\d+)"'])
+        jazoest = self._grab(html, [
+            r'jazoest=(\d+)',
+            r'name="jazoest" value="(\d+)"',
+        ])
+        uid = self._grab(html, [
+            r'"USER_ID":"(\d+)"',
+            r'"userID":"(\d+)"',
+        ])
 
         if not fb_dtsg:
             return None
 
         time.sleep(random.uniform(0.6, 1.6))
 
+        # Thử lấy access_token từ business
         access_token = ""
         for url in (
             "https://business.facebook.com/content_management",
@@ -112,6 +130,7 @@ class FBTokenGrabber:
                 continue
             time.sleep(random.uniform(0.5, 1.2))
 
+        # Fallback dùng cookie
         if not access_token:
             access_token = cookie
 
