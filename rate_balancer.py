@@ -1,15 +1,11 @@
-"""
-Rate Balancer — min 3s, có thể set manual
-"""
+"""Chỉnh delay spam. Min 3s."""
 import os, json, threading
-from typing import Dict
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 PATH = os.path.join(DATA_DIR, "rate_config.json")
 _lock = threading.Lock()
-
-MIN_SAFE_DELAY = 3.0   # không cho dưới 3s
+MIN_SAFE_DELAY = 3.0
 
 DEFAULTS = {
     "fb_send": 4.0,
@@ -25,6 +21,7 @@ DEFAULTS = {
     "wechat_send": 4.0,
 }
 
+
 def _load():
     if not os.path.exists(PATH):
         return dict(DEFAULTS)
@@ -37,13 +34,16 @@ def _load():
     except Exception:
         return dict(DEFAULTS)
 
+
 def _save(d):
     with open(PATH, "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=2)
 
+
 def get(key: str, default=None) -> float:
     with _lock:
         return _load().get(key, default if default is not None else DEFAULTS.get(key, 3.0))
+
 
 def set_(key: str, value: float):
     with _lock:
@@ -51,9 +51,11 @@ def set_(key: str, value: float):
         d[key] = max(MIN_SAFE_DELAY, float(value))
         _save(d)
 
+
 def all_() -> dict:
     with _lock:
         return _load()
+
 
 def reset():
     with _lock:
