@@ -1,13 +1,14 @@
 services:
-  - type: worker
+  - type: web            # ← ĐỔI TỪ worker SANG web
     name: alb-forge
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    healthCheckPath: /
     envVars:
       - key: BOT_TOKEN
-        value: "8908394974:AAEoCVzAtD8xc_2N49rHP43HUIGrTEkYGX4"
+        value: "8845944331:AAEN9CM-mui0Ga_HFENi9I52EcxsWtgg8Sk"
       - key: ADMIN_IDS
         value: "6094686933"
       - key: TZ
