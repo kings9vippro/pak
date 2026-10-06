@@ -1,10 +1,18 @@
-import os, json, threading
+# ============================================================
+# data_store.py — Lưu trữ cookie + config dạng JSON
+# ============================================================
+import os
+import json
+import threading
 
-DATA_DIR = "data"
+# ----- Đổi sang /tmp để tránh lỗi read-only trên Render -----
+DATA_DIR = os.environ.get("DATA_DIR", "/tmp/alb_data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
 class Store:
+    """Lưu trữ key-value vào file JSON, có lock chống race."""
+
     def __init__(self, name):
         self.path = os.path.join(DATA_DIR, f"{name}.json")
         self.lock = threading.Lock()
@@ -42,5 +50,6 @@ class Store:
             return dict(self.data)
 
 
-COOKIES = Store("cookies")
-CONFIG = Store("config")
+# ----- Hai store toàn cục -----
+COOKIES = Store("cookies")   # {user_id: {"fb": [...], "zalo": [...]}}
+CONFIG = Store("config")     # config phụ nếu cần
