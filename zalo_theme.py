@@ -1,4 +1,9 @@
-import time, random, threading
+# ============================================================
+# zalo_theme.py — Đổi màu tên, theme nền chat Zalo
+# ============================================================
+import time
+import random
+
 from firewall_v7 import FW
 
 ZALO_TEXT_COLORS = [
@@ -40,6 +45,7 @@ class ZaloTheme:
 
     def auto_color_loop(self, thread_id, msgs, delay, stop_event,
                         is_group=True, colors=None, on_log=None):
+        """Spam 1 nhóm, auto đổi màu mỗi lần gửi."""
         user_delay = max(3.0, float(delay))
         color_codes = [c["code"] for c in (colors or ZALO_TEXT_COLORS)]
         i = 0
@@ -75,6 +81,7 @@ class ZaloTheme:
             self.fw.behavior.maybe_break()
 
     def set_name_color(self, thread_id, user_id, color):
+        """Đổi màu tên user trong nhóm."""
         payload = {
             "imei": self.z.imei,
             "grid": str(thread_id),
@@ -89,7 +96,12 @@ class ZaloTheme:
         )
 
     def set_theme(self, thread_id, theme_id):
-        payload = {"imei": self.z.imei, "grid": str(thread_id), "themeId": theme_id}
+        """Đổi theme nền chat."""
+        payload = {
+            "imei": self.z.imei,
+            "grid": str(thread_id),
+            "themeId": theme_id,
+        }
         enc = self.z._enc(payload)
         return self.z.s.post(
             "https://tt-group-wpa.chat.zalo.me/api/group/settheme",
@@ -98,6 +110,7 @@ class ZaloTheme:
         )
 
     def auto_theme_loop(self, thread_id, delay, stop_event, on_log=None):
+        """Đổi theme liên tục."""
         themes = [t["id"] for t in ZALO_THEMES]
         i = 0
         while not stop_event.is_set():
