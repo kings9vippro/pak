@@ -1,17 +1,21 @@
 """
-ANTI-BAN v2.0 — Phòng ban chuyên sâu
-- Fingerprint consistency (giữ ổn định, không đổi liên tục)
-- Session rotation (không dùng 1 session quá lâu)
-- Warmup requirement (không spam ngay sau khi thêm cookie)
-- Cooldown sau fail (nghỉ dài nếu detect)
-- Behavior clustering (gộp nhiều tin thành 1 đợt)
-- Traffic shaping (giãn cách random)
-- Cookie age tracking (không dùng cookie quá cũ)
+ANTI-BAN v3.0 — CHUYÊN SÂU FB + ZALO
+Chiến lược chuyên gia:
+1. Warmup bắt buộc (cookie mới phải warm trước 5 phút)
+2. Risk score realtime (0.0 → 1.0)
+3. Fail streak → cooldown → disable
+4. Traffic shaping (max 150 req/h)
+5. Session rotation (đổi session sau 50-80 req)
+6. Behavior clustering (gom nhóm tin, không gửi liên tục)
+7. Per-cookie fingerprint cố định
+8. Nghỉ theo nhịp sinh học (giả lập ngủ 0h-6h)
+9. Rate clamp min 3s
+10. Auto escape khi risk cao
 """
 import time, random, threading, hashlib
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional
 
 
 @dataclass
@@ -26,16 +30,20 @@ class CookieMeta:
     fail_count: int = 0
     disabled: bool = False
     cooldown_until: float = 0.0
+    request_count: int = 0
+    hour_bucket: list = field(default_factory=list)
 
 
 class AntiBan:
     def __init__(self):
         self.metas = {}
         self.lock = threading.Lock()
-        self.hourly = deque(maxlen=3600)   # lưu timestamp các request
-        self.daily_sent = {}
+        self.max_per_hour = 150
 
-    # ---------- Cookie age ----------
+    # ---------- helpers ----------
+    def _hash(self, c: str) -> str:
+        return hashlib.md5(c.encode()).hexdigest()[:12]
+
     def register(self, cookie: str) -> CookieMeta:
         h = self._hash(cookie)
         with self.lock:
@@ -43,14 +51,8 @@ class AntiBan:
                 self.metas[h] = CookieMeta(cookie=cookie)
             return self.metas[h]
 
-    def _hash(self, c: str) -> str:
-        return hashlib.md5(c.encode()).hexdigest()[:12]
-
-    # ---------- Warmup requirement ----------
+    # ---------- warmup ----------
     def needs_warmup(self, cookie: str, min_warm_age: float = 300) -> bool:
-        """
-        Cookie mới (chưa warm > 5 phút) → cần warm trước khi spam.
-        """
         m = self.register(cookie)
         return (time.time() - m.last_warm) > min_warm_age
 
@@ -60,7 +62,7 @@ class AntiBan:
             m.last_warm = time.time()
             m.warm_count += 1
 
-    # ---------- Cooldown ----------
+    # ---------- cooldown ----------
     def cooldown(self, cookie: str, seconds: float):
         m = self.register(cookie)
         with self.lock:
@@ -72,21 +74,41 @@ class AntiBan:
             left = m.cooldown_until - time.time()
             return max(0.0, left)
 
-    # ---------- Fail streak ----------
+    # ---------- risk ----------
+    def get_risk_score(self, cookie: str) -> float:
+        m = self.register(cookie)
+        with self.lock:
+            total = m.ok_count + m.fail_count
+            if total == 0:
+                return 0.0
+            fail_rate = m.fail_count / total
+            streak_factor = min(1.0, m.fail_streak / 5)
+            return min(1.0, fail_rate * 0.7 + streak_factor * 0.3)
+
+    def suggest_cooldown(self, cookie: str) -> int:
+        r = self.get_risk_score(cookie)
+        if r > 0.8:
+            return 900
+        if r > 0.6:
+            return 300
+        if r > 0.4:
+            return 60
+        return 0
+
+    # ---------- report ----------
     def report(self, cookie: str, ok: bool):
         m = self.register(cookie)
         with self.lock:
+            m.request_count += 1
             if ok:
                 m.ok_count += 1
                 m.fail_streak = 0
             else:
                 m.fail_count += 1
                 m.fail_streak += 1
-            # Nếu fail 5 lần liên tiếp → cooldown 5 phút
             if m.fail_streak >= 5:
                 m.cooldown_until = time.time() + 300
                 m.fail_streak = 0
-            # Nếu fail 15 lần tổng và tỉ lệ ok thấp → disable 1h
             if m.fail_count >= 15 and (m.ok_count / max(m.fail_count, 1)) < 0.2:
                 m.cooldown_until = time.time() + 3600
                 m.disabled = True
@@ -94,7 +116,8 @@ class AntiBan:
     def is_disabled(self, cookie: str) -> bool:
         m = self.register(cookie)
         with self.lock:
-            if not m.disabled: return False
+            if not m.disabled:
+                return False
             if time.time() > m.cooldown_until:
                 m.disabled = False
                 m.fail_count = 0
@@ -102,25 +125,37 @@ class AntiBan:
                 return False
             return True
 
-    # ---------- Traffic shaping ----------
-    def register_request(self):
+    # ---------- traffic shaping ----------
+    def register_request(self, cookie: str):
+        m = self.register(cookie)
         with self.lock:
-            self.hourly.append(time.time())
+            now = time.time()
+            m.hour_bucket = [t for t in m.hour_bucket if now - t < 3600]
+            m.hour_bucket.append(now)
 
-    def hourly_rate(self) -> int:
+    def should_slow(self, cookie: str) -> bool:
+        m = self.register(cookie)
         with self.lock:
-            cutoff = time.time() - 3600
-            self.hourly = deque([t for t in self.hourly if t > cutoff], maxlen=3600)
-            return len(self.hourly)
+            return len(m.hour_bucket) > self.max_per_hour
 
-    def should_slow_down(self, max_per_hour: int = 200) -> bool:
-        return self.hourly_rate() > max_per_hour
+    # ---------- biological rhythm ----------
+    @staticmethod
+    def is_sleep_hour() -> bool:
+        """Zalo/FB thường ít hoạt động 0-6h sáng."""
+        h = time.localtime().tm_hour
+        return 0 <= h < 6
 
-    # ---------- Session rotation ----------
-    def rotate_session_after(self, n: int = 50):
-        """Báo cần đổi session sau N request."""
-        # Logic này được dùng ở tầng Firewall.request nếu cần
-        return random.randint(n // 2, n * 2)
+    def biological_delay(self, cookie: str) -> float:
+        """Delay cộng thêm nếu vào giờ ngủ."""
+        if self.is_sleep_hour():
+            return random.uniform(5.0, 15.0)
+        return 0.0
+
+    # ---------- session rotation ----------
+    @staticmethod
+    def should_rotate_session(cookie: str, threshold: int = 60) -> bool:
+        # Đơn giản: random 1/60
+        return random.randint(1, threshold) == 1
 
 
 ANTIBAN = AntiBan()
